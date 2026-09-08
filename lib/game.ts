@@ -5,7 +5,7 @@ import { computeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 import { PlayerPhysics, movementVector, CollisionWorld } from './physics';
 import { createConcert, CONCERT } from './concert';
 import { createSky } from './sky';
-import { LIBRARY, onLibraryConnection, distanceToRoads } from './campus-layout';
+import { LIBRARY, GALLERY, GALLERY_ROAD, onLibraryConnection, distanceToRoads } from './campus-layout';
 import { applyLibraryMaterials } from './library-materials';
 import { createGrass, createGrassProbe, grassHeight } from './grass';
 import { createDownloader, STAGES } from './assets';
@@ -18,10 +18,11 @@ export const LANDMARKS = {
   courts: { label:'Basketball courts', x:-13, z:242, yaw:Math.PI },
   concert: { label:'TECNOESIS concert', x:-28, z:170, yaw:-Math.PI/2 },
   library: { label:'APJ Abdul Kalam Library', x:LIBRARY.entrance.x, z:LIBRARY.entrance.z-5, yaw:0 },
+  gallery: { label:'Lecture gallery', x:GALLERY.entrance.x, z:GALLERY.entrance.z-8, yaw:Math.PI },
 } as const;
 export type Landmark = keyof typeof LANDMARKS;
 export type Quality = 'performance' | 'balanced' | 'high';
-export type GameState = { ready:boolean; playing:boolean; progress:string; error:string; fps:number; location:string; x:number; z:number; motion:string; percent:number; libraryPercent:number; libraryReady:boolean; runLock:boolean; riding:boolean; canMount:boolean; y?:number; grounded?:boolean; overview?:boolean; quality?:Quality; draws?:number; triangles?:number; animationTime?:number; crowdCount?:number };
+export type GameState = { ready:boolean; playing:boolean; progress:string; error:string; fps:number; location:string; x:number; z:number; motion:string; percent:number; outerPercent:number; outerReady:boolean; runLock:boolean; riding:boolean; canMount:boolean; y?:number; grounded?:boolean; overview?:boolean; quality?:Quality; draws?:number; triangles?:number; animationTime?:number; crowdCount?:number };
 export type Game = { setPlaying:(value:boolean)=>void; reset:()=>void; dispose:()=>void; travel:(id:Landmark)=>void; overview:()=>void; setQuality:(q:Quality)=>void; input:(key:string,pressed:boolean)=>void; move:(x:number,y:number)=>void; toggleRun:()=>void; toggleRide:()=>void; getState:()=>GameState };
 type Tree = {position:number[];height:number;width:number};
 type TreeFile = {trees:Tree[];roads:number[][][]};
@@ -39,7 +40,7 @@ const AIR_POSE:Record<string,[number,number,number]> = {
   LeftForeArm:[.75,0,0], RightForeArm:[.75,0,0],
 };
 export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>void):Promise<Game> {
-  const state:GameState={ready:false,playing:false,progress:'Downloading the campus',error:'',fps:0,location:'Sports complex',x:-20,z:67,motion:'Idle',percent:0,libraryPercent:0,libraryReady:false,runLock:false,riding:false,canMount:false,quality:'balanced',overview:false};
+  const state:GameState={ready:false,playing:false,progress:'Downloading the campus',error:'',fps:0,location:'Sports complex',x:-20,z:67,motion:'Idle',percent:0,outerPercent:0,outerReady:false,runLock:false,riding:false,canMount:false,quality:'balanced',overview:false};
   const publish=()=>onState({...state});
   const scene=new THREE.Scene();scene.background=new THREE.Color('#bdd7df');scene.fog=new THREE.Fog('#bdd7df',240,700);
   const mobile=matchMedia('(pointer:coarse)').matches;
@@ -64,9 +65,9 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
   try {
     const draco=new DRACOLoader().setDecoderPath('/draco/');
     const loader=new GLTFLoader().setDRACOLoader(draco);
-    const download=createDownloader(({campus:campusPercent,library:libraryPercent})=>{
-      if(campusPercent!==state.percent||libraryPercent!==state.libraryPercent){
-        state.percent=campusPercent;state.libraryPercent=libraryPercent;publish();
+    const download=createDownloader(({campus:campusPercent,outer:outerPercent})=>{
+      if(campusPercent!==state.percent||outerPercent!==state.outerPercent){
+        state.percent=campusPercent;state.outerPercent=outerPercent;publish();
       }
     });
 
@@ -136,7 +137,8 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     // whose trunk sits inside the road corridor is removed here for good.
     const trees=treeFile.trees.filter(t=>
       !onLibraryConnection(t.position[0],t.position[2],t.width*.45+4.8)
-      && distanceToRoads(t.position[0],t.position[2],roads)>4.9);
+      && distanceToRoads(t.position[0],t.position[2],roads)>4.9
+      && distanceToRoads(t.position[0],t.position[2],[GALLERY_ROAD])>5.2);
     const vegetation=makeTrees(trees);scene.add(vegetation);
     const trunkCollisions=new THREE.Group();
     for(const t of trees){if(t.height<3)continue;const o=new THREE.Mesh(new THREE.BoxGeometry(Math.max(.25,t.width*.07),2.6,Math.max(.25,t.width*.07)));o.position.set(t.position[0],1.3+t.position[1],t.position[2]);trunkCollisions.add(o);}
@@ -220,7 +222,7 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
       camera.lookAt(target);avatar.visible=camera.position.distanceTo(target)>1;
     };
     const setPlaying=(v:boolean)=>{if(!state.ready&&v)return;state.playing=v;state.overview=false;keys.clear();state.runLock=false;stickX=0;stickY=0;drag=false;if(v){if(!hasStarted){hasStarted=true;follow(0,true);}renderer.domElement.focus();}publish();};
-    const travel=(id:Landmark)=>{const p=LANDMARKS[id];if(!p)throw new Error('Unknown campus destination');if(id==='library'&&!state.libraryReady)return;const floor=world.rayIntersect(new THREE.Ray(new THREE.Vector3(p.x,10,p.z),new THREE.Vector3(0,-1,0)));physics.teleport(p.x,(floor?floor.position.y:0)+.015,p.z);avatar.position.copy(physics.feet);yaw=p.yaw;pitch=id==='library'?-.16:id==='concert'?-.06:.26;avatar.rotation.y=yaw+Math.PI;if(state.riding)parkBicycle();state.location=p.label;state.x=p.x;state.y=avatar.position.y;state.z=p.z;state.grounded=false;state.overview=false;state.playing=true;state.runLock=false;stickX=0;stickY=0;hasStarted=true;keys.clear();drag=false;follow(0,true);publish();renderer.domElement.focus();};
+    const travel=(id:Landmark)=>{const p=LANDMARKS[id];if(!p)throw new Error('Unknown campus destination');if((id==='library'||id==='gallery')&&!state.outerReady)return;const floor=world.rayIntersect(new THREE.Ray(new THREE.Vector3(p.x,10,p.z),new THREE.Vector3(0,-1,0)));physics.teleport(p.x,(floor?floor.position.y:0)+.015,p.z);avatar.position.copy(physics.feet);yaw=p.yaw;pitch=id==='library'||id==='gallery'?-.16:id==='concert'?-.06:.26;avatar.rotation.y=yaw+Math.PI;if(state.riding)parkBicycle();state.location=p.label;state.x=p.x;state.y=avatar.position.y;state.z=p.z;state.grounded=false;state.overview=false;state.playing=true;state.runLock=false;stickX=0;stickY=0;hasStarted=true;keys.clear();drag=false;follow(0,true);publish();renderer.domElement.focus();};
     const reset=()=>travel('gym');
     const overview=()=>{state.playing=false;state.overview=true;keys.clear();state.runLock=false;avatar.visible=true;camera.position.set(-160,Math.max(510,330/camera.aspect),75);camera.lookAt(-160,0,135);publish();};
     const setQuality=(q:Quality)=>{if(!['performance','balanced','high'].includes(q))throw new Error('Unknown quality');state.quality=q;grass.setQuality(q);renderer.setPixelRatio(q==='performance'?.75:Math.min(devicePixelRatio,q==='high'?2:mobile?1.4:1.25));size();publish();};
@@ -272,17 +274,23 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     window.addEventListener('keydown',down);window.addEventListener('keyup',up);window.addEventListener('blur',blur);document.addEventListener('visibilitychange',visibility);
     const canvas=renderer.domElement;canvas.addEventListener('pointerdown',pointerDown);canvas.addEventListener('pointerup',pointerUp);canvas.addEventListener('pointercancel',pointerUp);canvas.addEventListener('pointermove',pointerMove);canvas.addEventListener('wheel',wheel,{passive:false});canvas.addEventListener('webglcontextlost',lost);
 
-    // The library arrives while the campus is already being walked.
-    const streamLibrary=async()=>{
-      const [libraryBytes,libraryCollisionBytes]=await Promise.all(STAGES.library.map(url=>download.get(url)));
+    // The library and the lecture gallery arrive while the campus is already
+    // being walked, then the walkable tree is rebuilt to take them in.
+    const streamOuter=async()=>{
+      const [libraryBytes,libraryCollisionBytes,galleryBytes,galleryCollisionBytes]=
+        await Promise.all(STAGES.outer.map(url=>download.get(url)));
       if(disposed)return;
       const library=await loader.parseAsync(libraryBytes,'');
       disposeLibraryMaterials=applyLibraryMaterials(library.scene,renderer);
-      library.scene.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
-      scene.add(library.scene);library.scene.updateMatrixWorld(true);prepare(library.scene);
-      const libraryCollision=await loader.parseAsync(libraryCollisionBytes,'');
-      colliders.add(libraryCollision.scene);world.rebuild(colliders);
-      state.libraryReady=true;state.libraryPercent=100;publish();
+      const gallery=await loader.parseAsync(galleryBytes,'');
+      for(const outer of [library.scene,gallery.scene]){
+        outer.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
+        scene.add(outer);outer.updateMatrixWorld(true);prepare(outer);
+      }
+      colliders.add((await loader.parseAsync(libraryCollisionBytes,'')).scene,
+        (await loader.parseAsync(galleryCollisionBytes,'')).scene);
+      world.rebuild(colliders);
+      state.outerReady=true;state.outerPercent=100;publish();
     };
 
     function animate(now:number){
@@ -307,7 +315,7 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
         simulation+=elapsed;let steps=0;
         while(simulation>=1/120&&steps++<12){physics.step(1/120,state.playing?direction:new THREE.Vector3(),speed);const hit=treeWorld.capsuleIntersect(physics.capsule);if(hit)physics.capsule.translate(hit.normal.multiplyScalar(hit.depth));simulation-=1/120;}
         avatar.position.copy(physics.feet);
-        if(avatar.position.y < -5 || avatar.position.x < -480 || avatar.position.x > 105 || avatar.position.z < -90 || avatar.position.z > 340)reset();
+        if(avatar.position.y < -5 || avatar.position.x < -600 || avatar.position.x > 105 || avatar.position.z < -90 || avatar.position.z > 420)reset();
       }else simulation=0;
       const pace=Math.hypot(physics.velocity.x,physics.velocity.z);
       const moving=state.playing&&direction.lengthSq()>.01&&pace>.12;
@@ -378,11 +386,11 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
       if(acc>.35){state.fps=Math.round(frames/acc);state.x=avatar.position.x;state.y=avatar.position.y;state.z=avatar.position.z;state.grounded=physics.grounded;state.draws=renderer.info.render.calls;state.triangles=renderer.info.render.triangles;state.animationTime=action.time;
         const near=!state.riding&&avatar.position.distanceTo(bicycle.group.position)<=MOUNT_RANGE;
         if(near!==state.canMount)state.canMount=near;
-        state.location=avatar.position.x<-320?'APJ Abdul Kalam Library':onLibraryConnection(avatar.position.x,avatar.position.z,12)?'Road to the library':Math.abs(avatar.position.z-CONCERT.z)<18&&avatar.position.x>CONCERT.x-65&&avatar.position.x<CONCERT.x+8?'TECNOESIS concert':avatar.position.z<90?'Sports complex':avatar.position.x < -82?'Cricket ground':avatar.position.z>237?'Basketball courts':avatar.position.x<-35?'Between the grounds':'Football ground';
+        state.location=avatar.position.x<-450&&avatar.position.z>245?'Lecture gallery':avatar.position.x<-320?'APJ Abdul Kalam Library':onLibraryConnection(avatar.position.x,avatar.position.z,12)?'Road to the library':Math.abs(avatar.position.z-CONCERT.z)<18&&avatar.position.x>CONCERT.x-65&&avatar.position.x<CONCERT.x+8?'TECNOESIS concert':avatar.position.z<90?'Sports complex':avatar.position.x < -82?'Cricket ground':avatar.position.z>237?'Basketball courts':avatar.position.x<-35?'Between the grounds':'Football ground';
         publish();acc=0;frames=0;}
     }
     state.ready=true;state.progress='Ready';state.percent=100;publish();frame=requestAnimationFrame(animate);
-    void streamLibrary().catch(e=>{state.progress=`The library could not be loaded: ${e.message||e}`;publish();});
+    void streamOuter().catch(e=>{state.progress=`The outlying buildings could not be loaded: ${e.message||e}`;publish();});
     return {setPlaying,reset,travel,overview,setQuality,input,move,toggleRun,toggleRide,getState:()=>({...state}),dispose(){disposed=true;cancelAnimationFrame(frame);window.removeEventListener('keydown',down);window.removeEventListener('keyup',up);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',pointerUp);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('webglcontextlost',lost);mixer.stopAllAction();world.clear();treeWorld.clear();grass.dispose();bicycle.dispose();draco.dispose();cleanupResources();}};
   } catch(error){cleanupResources();throw error;}
 }

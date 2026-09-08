@@ -14,13 +14,14 @@ const PLACES: { id: Landmark; name: string }[] = [
   { id: 'courts', name: 'Basketball' },
   { id: 'concert', name: 'Concert' },
   { id: 'library', name: 'Library' },
+  { id: 'gallery', name: 'Lecture gallery' },
 ];
 
 export default function Campus() {
   const mount = useRef<HTMLDivElement>(null);
   const game = useRef<Game | null>(null);
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState<GameState>({ ready: false, playing: false, progress: 'Preparing campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 70, motion: 'Idle', percent: 0, libraryPercent: 0, libraryReady: false, runLock: false, riding: false, canMount: false });
+  const [state, setState] = useState<GameState>({ ready: false, playing: false, progress: 'Preparing campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 70, motion: 'Idle', percent: 0, outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false });
   useEffect(() => {
     let disposed = false; let unregister = () => {};
     import('@/lib/game').then(async ({ createGame }) => {
@@ -54,7 +55,7 @@ export default function Campus() {
         <div className={`places ${open ? 'open' : ''}`}>
           <Button className="places-toggle" disabled={!state.ready} aria-expanded={open} onClick={() => setOpen(v => !v)}><Map size={15} />{state.location}<ChevronDown size={15} className="caret" /></Button>
           {open && <div className="places-menu" role="menu">
-            {PLACES.map(p => <button key={p.id} role="menuitem" disabled={p.id === 'library' && !state.libraryReady} onClick={() => go(p.id)}>{p.name}{p.id === 'library' && !state.libraryReady && <em>{state.libraryPercent}%</em>}<ArrowUpRight size={13} /></button>)}
+            {PLACES.map(p => <button key={p.id} role="menuitem" disabled={(p.id === 'library' || p.id === 'gallery') && !state.outerReady} onClick={() => go(p.id)}>{p.name}{(p.id === 'library' || p.id === 'gallery') && !state.outerReady && <em>{state.outerPercent}%</em>}<ArrowUpRight size={13} /></button>)}
             <button role="menuitem" className="overview" onClick={() => { setOpen(false); if (state.overview) game.current?.setPlaying(true); else game.current?.overview(); }}><Map size={14} />{state.overview ? 'Back to player' : 'Campus overview'}</button>
           </div>}
         </div>
@@ -69,7 +70,7 @@ export default function Campus() {
         : state.ready ? <Button className="play-button" onClick={() => game.current?.setPlaying(true)}><Play size={17} fill="currentColor" /> Enter campus <ArrowUpRight className="arrow" /></Button>
         : <div className="loading"><div className="loading-track"><i style={{ width: `${state.percent}%` }} /></div><span>{state.progress} · {state.percent}%</span></div>}
     </section>}
-    {state.playing && !state.libraryReady && <div className="hud streaming">Library {state.libraryPercent}%</div>}
+    {state.playing && !state.outerReady && <div className="hud streaming">Outer campus {state.outerPercent}%</div>}
     {state.playing && <div className="hud minimap" aria-label="Campus map with player position"><CampusMap x={state.x} z={state.z} /></div>}
     {state.playing && <div className="hud pad" aria-label="Movement controls">
       <Joystick locked={state.runLock} onMove={stick} onLock={() => game.current?.toggleRun()} />

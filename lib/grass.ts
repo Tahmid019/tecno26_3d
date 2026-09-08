@@ -25,7 +25,7 @@ export function createGrassProbe(lawns: THREE.Mesh[], solidHeight: (x: number, z
   ray.firstHitOnly = true;
   const entries = lawns.map(mesh => ({ mesh, bounds: new THREE.Box3().setFromObject(mesh) }));
   return (x, z) => {
-    if (x < -477 || x > 103 || z < -88 || z > 337) return null;
+    if (x < -598 || x > 103 || z < -88 || z > 418) return null;
     ray.ray.origin.set(x, 70, z);
     let closest: THREE.Intersection | undefined;
     for (const { mesh, bounds } of entries) {

@@ -24,15 +24,23 @@ bicycle, R to return to the sports complex, Escape to pause.
 
 The place list is the dropdown in the top bar; **Concert** puts you on the
 football entrance sightline facing the stage, and **Campus overview** lifts to a
-plan view.
+plan view. **Library** and **Lecture gallery** stay greyed out until the
+outlying buildings finish streaming.
+
+The lecture gallery stands north east of the library — four octagonal lecture
+theatres around a central hall, a fan roofed auditorium on the north west side
+and a three storey wing to the south east, with its entrance facing south. Its
+six drone photographs put its centre 122 m north and 126 m east of the
+library's; an approach road runs west from its forecourt to the east end of the
+library road, so you can walk or ride between the two.
 
 ## Loading
 
 The download is staged. Everything needed to stand up and walk — campus,
 walkable collision, the student and the tree list — arrives first with a real
-percentage on the start panel, and the library streams in afterwards while you
-are already exploring; a small chip shows its progress and the Library
-destination stays greyed out until it lands. Over the wire the whole campus is
+percentage on the start panel, and the outlying buildings (library and lecture
+gallery) stream in afterwards while you are already exploring; a small chip
+shows their progress and both destinations stay greyed out until they land. Over the wire the whole campus is
 about 4.3 MB: `campus.glb` and `library.glb` are Draco-compressed, the character
 and aerial textures are JPEG rather than PNG, and `scripts/serve.mjs` gzips
 what is left. Uncompressed, the same assets were about 41 MB.

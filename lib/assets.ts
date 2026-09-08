@@ -5,7 +5,7 @@
  * then the library in the background. Progress is measured from the bytes that
  * actually arrive, so the number on screen is the download, not a guess.
  */
-export type Stage = 'campus' | 'library';
+export type Stage = 'campus' | 'outer';
 
 /** Approximate sizes, only used to weight the bar before headers arrive. */
 const EXPECTED: Record<string, number> = {
@@ -15,11 +15,14 @@ const EXPECTED: Record<string, number> = {
   '/assets/trees.json': 65_000,
   '/assets/library.glb': 1_220_000,
   '/assets/library-collision.glb': 170_000,
+  '/assets/gallery.glb': 97_000,
+  '/assets/gallery-collision.glb': 94_000,
 };
 
 export const STAGES: Record<Stage, string[]> = {
   campus: ['/assets/campus.glb', '/assets/collision.glb', '/assets/student.glb', '/assets/trees.json'],
-  library: ['/assets/library.glb', '/assets/library-collision.glb'],
+  outer: ['/assets/library.glb', '/assets/library-collision.glb',
+    '/assets/gallery.glb', '/assets/gallery-collision.glb'],
 };
 
 export type Progress = Record<Stage, number>;
@@ -40,7 +43,7 @@ export function createDownloader(onProgress: (progress: Progress) => void): Down
     return Math.max(0, Math.min(100, Math.round(loaded / total * 100)));
   };
 
-  const report = () => onProgress({ campus: percent('campus'), library: percent('library') });
+  const report = () => onProgress({ campus: percent('campus'), outer: percent('outer') });
 
   return {
     async get(url) {
