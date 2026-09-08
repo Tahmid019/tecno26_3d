@@ -28,10 +28,11 @@ plan view. **Library** and **Lecture gallery** stay greyed out until the
 outlying buildings finish streaming.
 
 The lecture gallery's shell is the supplied Meshy sculpt, cut down from 1.94
-million triangles to 90 thousand with a 2048 base colour. Its entrance bay is
-replaced by hand-built geometry, because generated meshes cannot resolve a deep
-recess and it arrived as a melted opening. A 9k triangle copy of the same mesh
-carries the collision.
+million triangles to 90 thousand with a 2048 base colour. Its frayed lower edge is
+sliced flat and extruded down into a plinth band, and its entrance bay is
+replaced by hand-built geometry matched to the photograph, because generated
+meshes cannot resolve a deep recess and it arrived as a melted opening. A 9k
+triangle copy of the same mesh carries the collision.
 
 The lecture gallery stands north east of the library — four octagonal lecture
 theatres around a central hall, a fan roofed auditorium on the north west side
