@@ -13,10 +13,10 @@ const EXPECTED: Record<string, number> = {
   '/assets/collision.glb': 2_150_000,
   '/assets/student.glb': 2_320_000,
   '/assets/trees.json': 65_000,
-  '/assets/library.glb': 1_204_036,
-  '/assets/library-collision.glb': 169_996,
-  '/assets/gallery.glb': 1_623_832,
-  '/assets/gallery-collision.glb': 484_084,
+  '/assets/library.glb': 1_210_704,
+  '/assets/library-collision.glb': 169_200,
+  '/assets/gallery.glb': 1_620_676,
+  '/assets/gallery-collision.glb': 482_372,
 };
 
 export const STAGES: Record<Stage, string[]> = {

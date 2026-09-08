@@ -63,6 +63,12 @@ browser, where a Draco decoder needs a worker that Node does not provide.
 real campus mesh, character animations, concert alignment, road continuity, the
 statue budget, and that no tree is planted in a carriageway.
 
+The road corridor is kept clear of trunks twice over: the aerial planting list
+is filtered against every road centre line as it loads, and the gallery's own
+perimeter planting is seeded outside the carriageway in `../build_gallery.py`.
+The final leg into the forecourt carries no kerb or footway, which would
+otherwise draw a white band straight across the paving.
+
 Grass is planted by sampling the lawn surfaces downwards and rejecting anything
 the walkable collision tree already covers, so it never grows through roads,
 courts, stages or steps. Blades bend away from the student and spring back
@@ -88,6 +94,13 @@ Riding is steered, not strafed: the stick's sideways axis turns the bicycle and
 the turn rate falls away at a standstill, so it leans through a full circle
 instead of spinning on the spot, and the camera eases round behind unless you
 are dragging it.
+
+Only the camera's boom *length* reacts to obstacles, and the position itself
+always eases towards it. Snapping the camera on frames where its collision ray
+found something and easing on frames where it missed shook the whole picture at
+riding pace, because at 14.5 m/s that ray flickers on and off every kerb and
+verge it passes; replayed against that flicker, the old rule jumped the camera
+1.35 m in a single frame where the current one moves 0.16 m.
 
 The Kalam statue is the supplied Meshy sculpt, reduced from 3.07 million
 triangles to about 34 thousand by `../prepare_statue.py`, with crevice shading

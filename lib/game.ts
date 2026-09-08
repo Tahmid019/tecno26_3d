@@ -136,7 +136,7 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     // Planting seeds occasionally dropped a trunk on the carriageway. Anything
     // whose trunk sits inside the road corridor is removed here for good.
     const trees=treeFile.trees.filter(t=>
-      !onLibraryConnection(t.position[0],t.position[2],t.width*.45+4.8)
+      !onLibraryConnection(t.position[0],t.position[2],t.width*.45+6.4)
       && distanceToRoads(t.position[0],t.position[2],roads)>4.9);
     const vegetation=makeTrees(trees);scene.add(vegetation);
     const trunkCollisions=new THREE.Group();
@@ -205,7 +205,7 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     const crankPoint=new THREE.Vector3();
     let ride=0,air=0,offGround=0,rideHeading=0;
 
-    let yaw=0,pitch=.26,distance=mobile?6.2:5.4,drag=false,hasStarted=false,stickX=0,stickY=0;
+    let yaw=0,pitch=.26,distance=mobile?6.2:5.4,boom=mobile?6.2:5.4,drag=false,hasStarted=false,stickX=0,stickY=0;
     let prev=performance.now(),acc=0,frames=0,simulation=0,lastJump=false,eventTime=0;
     let shadowPrimed=false;
     const camRay=new THREE.Raycaster();camRay.firstHitOnly=true;
@@ -213,11 +213,18 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     const follow=(dt:number,snap=false)=>{
       target.copy(avatar.position).add(new THREE.Vector3(0,state.riding?1.55:1.3,0));
       offset.set(Math.sin(yaw)*Math.cos(pitch)*distance,Math.sin(pitch)*distance+1,Math.cos(yaw)*Math.cos(pitch)*distance);
-      camRay.set(target,offset.clone().normalize());camRay.far=offset.length()+.2;
+      const reach=offset.length();
+      camRay.set(target,offset.clone().normalize());camRay.far=reach+.2;
       const hit=camRay.intersectObjects(cameraMeshes,false)[0];
-      if(hit&&hit.distance<offset.length())offset.setLength(Math.max(.55,hit.distance-.25));
+      const wanted=hit&&hit.distance<reach?Math.max(.55,hit.distance-.25):reach;
+      // Only the boom length reacts to obstacles, and the position always
+      // eases. Snapping the camera on frames where the ray hit and easing on
+      // frames where it missed made it judder every frame at riding speed,
+      // because at that speed the ray flickers on and off kerbs and verges.
+      boom=snap?wanted:wanted<boom?wanted:boom+(wanted-boom)*(1-Math.exp(-dt*3.5));
+      offset.setLength(boom);
       desired.copy(target).add(offset);
-      if(snap||hit)camera.position.copy(desired);else camera.position.lerp(desired,1-Math.exp(-dt*12));
+      if(snap)camera.position.copy(desired);else camera.position.lerp(desired,1-Math.exp(-dt*14));
       camera.lookAt(target);avatar.visible=camera.position.distanceTo(target)>1;
     };
     const setPlaying=(v:boolean)=>{if(!state.ready&&v)return;state.playing=v;state.overview=false;keys.clear();state.runLock=false;stickX=0;stickY=0;drag=false;if(v){if(!hasStarted){hasStarted=true;follow(0,true);}renderer.domElement.focus();}publish();};
