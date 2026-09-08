@@ -38,8 +38,9 @@ The lecture gallery stands north east of the library — four octagonal lecture
 theatres around a central hall, a fan roofed auditorium on the north west side
 and a three storey wing to the south east, with its entrance facing south. Its
 six drone photographs put its centre 122 m north and 126 m east of the
-library's; an approach road runs west from its forecourt to the east end of the
-library road, so you can walk or ride between the two.
+library's. The library road carries on past the library to its forecourt — one
+road, built once in `build_library.py`, so the two stretches cannot drift apart
+in width, surface or kerb.
 
 ## Loading
 

@@ -5,7 +5,7 @@ import { computeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 import { PlayerPhysics, movementVector, CollisionWorld } from './physics';
 import { createConcert, CONCERT } from './concert';
 import { createSky } from './sky';
-import { LIBRARY, GALLERY, GALLERY_ROAD, onLibraryConnection, distanceToRoads } from './campus-layout';
+import { LIBRARY, GALLERY, onLibraryConnection, distanceToRoads } from './campus-layout';
 import { applyLibraryMaterials } from './library-materials';
 import { createGrass, createGrassProbe, grassHeight } from './grass';
 import { createDownloader, STAGES } from './assets';
@@ -137,8 +137,7 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     // whose trunk sits inside the road corridor is removed here for good.
     const trees=treeFile.trees.filter(t=>
       !onLibraryConnection(t.position[0],t.position[2],t.width*.45+4.8)
-      && distanceToRoads(t.position[0],t.position[2],roads)>4.9
-      && distanceToRoads(t.position[0],t.position[2],[GALLERY_ROAD])>5.2);
+      && distanceToRoads(t.position[0],t.position[2],roads)>4.9);
     const vegetation=makeTrees(trees);scene.add(vegetation);
     const trunkCollisions=new THREE.Group();
     for(const t of trees){if(t.height<3)continue;const o=new THREE.Mesh(new THREE.BoxGeometry(Math.max(.25,t.width*.07),2.6,Math.max(.25,t.width*.07)));o.position.set(t.position[0],1.3+t.position[1],t.position[2]);trunkCollisions.add(o);}

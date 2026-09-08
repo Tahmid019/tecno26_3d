@@ -1,11 +1,11 @@
 // Shared model axes: x grows west, z grows north. Library stays east of cricket.
 export const LIBRARY = {x:-370,z:200,entrance:{x:-405,z:263},front:{x:0,z:1}};
-export const LIBRARY_ROAD = [[-240,236],[-266,254],[-292,270],[-340,270],[-435,270]] as const;
+// One road runs from the campus junction past the library to the gallery.
+export const LIBRARY_ROAD = [[-240,236],[-266,254],[-292,270],[-340,270],
+  [-398.8,270],[-411.2,270],[-435,270],[-508,268]] as const;
 // The lecture gallery: six drone fixes put its centre 122 m north and 126 m
 // east of the library's, and its entrance faces south onto NIT Road.
 export const GALLERY = {x:-508,z:320,entrance:{x:-508,z:280},front:{x:0,z:-1}};
-/** The gallery's own approach, which meets the library road's east end. */
-export const GALLERY_ROAD = [[-506,268],[-482,269],[-456,269],[-426,270]];
 export function onLibraryConnection(x:number,z:number,clearance=6){
   return LIBRARY_ROAD.slice(1).some((b,i)=>{
     const a=LIBRARY_ROAD[i],dx=b[0]-a[0],dz=b[1]-a[1];
