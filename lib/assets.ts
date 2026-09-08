@@ -15,8 +15,8 @@ const EXPECTED: Record<string, number> = {
   '/assets/trees.json': 65_000,
   '/assets/library.glb': 1_220_000,
   '/assets/library-collision.glb': 170_000,
-  '/assets/gallery.glb': 97_000,
-  '/assets/gallery-collision.glb': 94_000,
+  '/assets/gallery.glb': 1_646_000,
+  '/assets/gallery-collision.glb': 485_000,
 };
 
 export const STAGES: Record<Stage, string[]> = {
