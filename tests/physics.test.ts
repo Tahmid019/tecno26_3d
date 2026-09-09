@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { Group, Mesh, BoxGeometry, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CollisionWorld, PlayerPhysics, movementVector } from '../lib/physics.ts';
-import { distanceToRoads, onLibraryConnection } from '../lib/campus-layout.ts';
+import { GALLERY, distanceToRoads, onLibraryConnection } from '../lib/campus-layout.ts';
 
 const zero=new Vector3();
 const load=async(path:string)=>{const b=readFileSync(path);
@@ -80,4 +80,37 @@ test('the road to the gallery is walkable end to end and carries no stray kerb',
   for (let i = 1; i < heights.length; i++)
     assert.ok(Math.abs(heights[i] - heights[i - 1]) < .3,
       `the road steps ${(heights[i] - heights[i - 1]).toFixed(2)} m at sample ${i}`);
+});
+
+test('the gallery reconstruction is enterable on foot and solid where it should be', async () => {
+  const site = new Group();
+  site.add(await load('public/assets/collision.glb'), await load('public/assets/gallery-collision.glb'));
+  const world = new CollisionWorld(site);
+  const player = new PlayerPhysics(world);
+  const { entrance } = GALLERY;
+
+  // The collision hull is cut from the reconstruction by material, so a wall
+  // that stopped being called a wall would silently open the building up.
+  player.teleport(entrance.x, 4, entrance.z - 8);
+  tick(player, 1.2);
+  assert.ok(player.grounded, 'no floor on the gallery forecourt');
+  const forecourt = player.feet.y;
+
+  // Walk to the front door: across the forecourt, then up the entrance steps.
+  const north = new Vector3(0, 0, 1);
+  for (let i = 0; i < 120 * 22; i++) player.step(1 / 120, north, 2.25);
+  assert.ok(player.grounded, 'the student left the ground on the way in');
+  assert.ok(player.feet.y > forecourt + .5,
+    `the entrance steps must lift the student onto the porch, got ${(player.feet.y - forecourt).toFixed(2)} m`);
+  assert.ok(player.feet.z < entrance.z + 50,
+    `the lobby glazing must stop the student, but they reached z ${player.feet.z.toFixed(1)}`);
+
+  // And the shell itself is closed: walking hard at a pavilion goes nowhere.
+  player.teleport(entrance.x - 22, 4, entrance.z + 60);
+  tick(player, 1.2);
+  const start = player.feet.clone();
+  const east = new Vector3(1, 0, 0);
+  for (let i = 0; i < 120 * 8; i++) player.step(1 / 120, east, 5.5);
+  assert.ok(player.feet.distanceTo(start) < 18,
+    `a pavilion wall must stop the student, but they travelled ${player.feet.distanceTo(start).toFixed(1)} m`);
 });

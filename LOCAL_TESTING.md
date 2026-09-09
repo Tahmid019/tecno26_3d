@@ -27,12 +27,17 @@ football entrance sightline facing the stage, and **Campus overview** lifts to a
 plan view. **Library** and **Lecture gallery** stay greyed out until the
 outlying buildings finish streaming.
 
-The lecture gallery's shell is the supplied Meshy sculpt, cut down from 1.94
-million triangles to 90 thousand with a 2048 base colour. Its frayed lower edge is
-sliced flat and extruded down into a plinth band, and its entrance bay is
-replaced by hand-built geometry matched to the photograph, because generated
-meshes cannot resolve a deep recess and it arrived as a melted opening. A 9k
-triangle copy of the same mesh carries the collision.
+The lecture gallery's shell is a hand-built reconstruction, modelled from the
+same six drone photographs plus four ground photographs, in
+`../gallery_reference.blend`. It replaced a Meshy photogrammetry sculpt whose
+edges frayed and whose entrance had melted into an unresolvable recess. Being
+ordinary modelled geometry split by material, it is editable, needs no texture
+beyond the two entrance column murals, and is smaller: 604 KB of display mesh
+and 251 KB of collision against the sculpt's 1.62 MB and 482 KB. It draws 109k
+triangles in 26 calls, and a hull cut from its own wall, plinth, column, stone
+and glazing surfaces carries the collision. The front doors are sealed — there
+is no interior behind them — so the entrance steps take you up onto the porch
+and no further.
 
 The lecture gallery stands north east of the library — four octagonal lecture
 theatres around a central hall, a fan roofed auditorium on the north west side
