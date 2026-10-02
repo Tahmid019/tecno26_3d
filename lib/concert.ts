@@ -9,8 +9,9 @@ export function createConcert() {
   root.rotation.y=CONCERT.yaw;
   const colliders=new T.Group();colliders.position.copy(root.position);colliders.rotation.copy(root.rotation);
   const buckets=new Map<T.Material,T.BufferGeometry[]>();
-  const mat=(color:string,metalness=0)=>new T.MeshStandardMaterial({color,roughness:metalness?.35:.85,metalness});
-  const black=mat('#11151d'),deck=mat('#262334'),silver=mat('#b7c8d2',.8),curtain=mat('#17182c'),purple=mat('#38233d'),steel=mat('#363d48',.5),gold=mat('#d8ac53',.65);
+  // Named so the camera boom can tell a truss it may pass through from the deck.
+  const mat=(color:string,name:string,metalness=0)=>Object.assign(new T.MeshStandardMaterial({color,roughness:metalness?.35:.85,metalness}),{name:'Concert | '+name});
+  const black=mat('#11151d','rigging black'),deck=mat('#262334','stage deck'),silver=mat('#b7c8d2','truss silver',.8),curtain=mat('#17182c','backdrop curtain'),purple=mat('#38233d','deck skirt'),steel=mat('#363d48','steel',.5),gold=mat('#d8ac53','cymbal gold',.65);
   const cyan=new T.MeshBasicMaterial({color:'#61edff'}),pink=new T.MeshBasicMaterial({color:'#ed6dff'}),white=new T.MeshBasicMaterial({color:'#eefaff'});
   const add=(g:T.BufferGeometry,m:T.Material,pos:number[],scale=[1,1,1],rotation=new T.Euler())=>{const matrix=new T.Matrix4().compose(new T.Vector3(...pos),new T.Quaternion().setFromEuler(rotation),new T.Vector3(...scale));g.applyMatrix4(matrix);const a=buckets.get(m)||[];a.push(g);buckets.set(m,a);};
   const box=(x:number,y:number,z:number,w:number,h:number,d:number,m:T.Material,solid=false)=>{add(new T.BoxGeometry(w,h,d),m,[x,y,z]);if(solid){const o=new T.Mesh(new T.BoxGeometry(w,h,d));o.position.set(x,y,z);colliders.add(o);}};
@@ -44,7 +45,7 @@ export function createConcert() {
     if(i%3===0){const beam=new T.Mesh(new T.ConeGeometry(1.65,7.4,16,1,true),new T.MeshBasicMaterial({color:i%2?'#66ddff':'#cf6aff',transparent:true,opacity:.055,blending:T.AdditiveBlending,side:T.DoubleSide,depthWrite:false}));beam.position.set(x,3.65,4);beam.rotation.z=(i-5)*.025;root.add(beam);beams.push(beam);}
   }
   // Bass drum, toms, cymbals, microphones, keyboard and two guitars.
-  add(new T.CylinderGeometry(.58,.58,.6,20),mat('#164061',.5),[0,1.72,-.7],[1,1,1],new T.Euler(Math.PI/2,0,0));
+  add(new T.CylinderGeometry(.58,.58,.6,20),mat('#164061','drum shell',.5),[0,1.72,-.7],[1,1,1],new T.Euler(Math.PI/2,0,0));
   add(new T.CylinderGeometry(.54,.54,.02,20),black,[0,1.72,-.385],[1,1,1],new T.Euler(Math.PI/2,0,0));
   for(const x of [-.65,.65]){add(new T.CylinderGeometry(.3,.3,.35,14),steel,[x,2.17,-1]);add(new T.CylinderGeometry(.29,.29,.015,14),white,[x,2.355,-1]);}
   for(const [x,z] of [[-1.3,-1.5],[1.2,-1.3],[.95,.05]]){rod([x,1.12,z],[x,2.5,z],.018,silver);add(new T.CylinderGeometry(.37,.37,.025,20),gold,[x,2.5,z]);for(const a of [0,2.1,4.2])rod([x,1.3,z],[x+Math.cos(a)*.3,1.12,z+Math.sin(a)*.3],.018,silver);}

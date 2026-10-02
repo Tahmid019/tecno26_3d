@@ -70,10 +70,18 @@ export class PlayerPhysics {
       if(wasGrounded && Math.abs(hit.normal.y)<.45 && direction.lengthSq()>.01){
         const trial=old.clone();trial.translate(new Vector3(this.delta.x,.36,this.delta.z));
         const obstruction=this.world.capsuleIntersect(trial);
-        this.ray.set(trial.start.clone().add(new Vector3(0,-.29,0)),new Vector3(0,-1,0));
+        // Look for the tread just past the riser, not under the capsule's
+        // centre: pressed against a riser the centre is a whole radius back,
+        // still over the lower step, so anything taller than the capsule could
+        // roll over (about 0.25 m) was taken for a wall.
+        const into=new Vector3(-hit.normal.x,0,-hit.normal.z);
+        if(into.lengthSq()>1e-8)into.setLength(this.capsule.radius+.06);
+        this.ray.set(trial.start.clone().add(into).add(new Vector3(0,-.29,0)),new Vector3(0,-1,0));
         const floor=this.world.rayIntersect(this.ray);
         if((!obstruction||obstruction.depth<.015)&&floor&&floor.distance<.39&&Math.abs(floor.triangle.getNormal(new Vector3()).y)>.6){
-          trial.translate(new Vector3(0,-floor.distance+.01,0));this.capsule.copy(trial);this.velocity.y=0;this.grounded=true;break;
+          trial.translate(new Vector3(0,-floor.distance+.01,0));
+          const fits=this.world.capsuleIntersect(trial);
+          if(!fits||fits.depth<.015){this.capsule.copy(trial);this.velocity.y=0;this.grounded=true;break;}
         }
       }
       this.capsule.translate(hit.normal.clone().multiplyScalar(hit.depth+1e-5));

@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 
 /** A small, once-baked daylight environment is enough for the library's glazing. */
-export function applyLibraryMaterials(root: THREE.Object3D, renderer: THREE.WebGLRenderer) {
-  const environment = daylightEnvironment(renderer);
+export function applyLibraryMaterials(root: THREE.Object3D, environment: THREE.Texture) {
   const materials = new Set<THREE.MeshStandardMaterial>();
   root.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
@@ -16,7 +15,7 @@ export function applyLibraryMaterials(root: THREE.Object3D, renderer: THREE.WebG
     // Cast bronze is metallic: with no environment to reflect it renders black.
     const bronze = name.startsWith('statue ');
     if (bronze || ['glass', 'silver', 'gold', 'plinth', 'solar', 'frame'].includes(name)) {
-      material.envMap = environment.texture;
+      material.envMap = environment;
       material.envMapIntensity = name === 'glass' ? .9 : bronze ? .95 : .55;
     }
     if (name === 'glass') {
@@ -37,10 +36,10 @@ export function applyLibraryMaterials(root: THREE.Object3D, renderer: THREE.WebG
     }
     material.needsUpdate = true;
   }
-  return () => environment.dispose();
 }
 
-function daylightEnvironment(renderer: THREE.WebGLRenderer) {
+/** A daylight sky baked once for glazing and metal to reflect; the library and administration share it. */
+export function daylightEnvironment(renderer: THREE.WebGLRenderer) {
   const capture = new THREE.Scene();
   const geometry = new THREE.SphereGeometry(80, 24, 12);
   const position = geometry.getAttribute('position');

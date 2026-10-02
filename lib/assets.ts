@@ -17,12 +17,22 @@ const EXPECTED: Record<string, number> = {
   '/assets/library-collision.glb': 169_200,
   '/assets/gallery.glb': 603_452,
   '/assets/gallery-collision.glb': 250_944,
+  '/assets/library-trees.json': 3_200,
+  '/assets/gallery-trees.json': 4_000,
+  '/assets/admin.glb': 3_585_904,
+  '/assets/admin-collision.glb': 1_064_484,
+  '/assets/admin-trees.json': 8_570,
+  '/assets/admin-link.glb': 174_200,
+  '/assets/admin-link-collision.glb': 171_032,
 };
 
 export const STAGES: Record<Stage, string[]> = {
   campus: ['/assets/campus.glb', '/assets/collision.glb', '/assets/student.glb', '/assets/trees.json'],
   outer: ['/assets/library.glb', '/assets/library-collision.glb',
-    '/assets/gallery.glb', '/assets/gallery-collision.glb'],
+    '/assets/gallery.glb', '/assets/gallery-collision.glb',
+    '/assets/library-trees.json', '/assets/gallery-trees.json',
+    '/assets/admin.glb','/assets/admin-collision.glb','/assets/admin-trees.json',
+    '/assets/admin-link.glb','/assets/admin-link-collision.glb'],
 };
 
 export type Progress = Record<Stage, number>;

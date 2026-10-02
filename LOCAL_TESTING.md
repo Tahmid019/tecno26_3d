@@ -27,6 +27,38 @@ football entrance sightline facing the stage, and **Campus overview** lifts to a
 plan view. **Library** and **Lecture gallery** stay greyed out until the
 outlying buildings finish streaming.
 
+**Administration** now appears in the same place list and streams with the
+other outlying buildings. It takes you to the red-paved entrance approach;
+use the central ramp to reach the raised courtyard. Its road connects to the
+gallery road, and the map and overview include the full extension.
+
+The administration building and its grounds are drawn 1.25 times the supplied
+model (`scale` in `lib/admin-placement.json`), so the podium stands at 3.75 m.
+Cars, scooters, bins, potted plants and trees are not enlarged: each only moves
+with the ground it stands on, so they stay life-size beside the bigger building.
+The two cars that were parked in the courtyard between the blocks are gone. The
+trees that stood on the side road and in the west yard's parking now stand on
+the lawn beside them, and the Norfolk pines are drawn as pines. Wall paint and
+the grey cladding were recoloured for the browser's tone mapping to match the
+drone photographs, and the lawn and asphalt take the campus's own values, so the
+plot has no visible edge. The front street carries on past both ends of the
+plot, and the ground runs on far beyond it on every side.
+
+Its origin is approximately 410 metres east of the existing gallery, with the
+main entrance facing northeast (38.4 degrees east of north). Placement uses the
+original administration drone GPS and the source model's corresponding camera
+positions; allow about 15–25 metres of uncertainty. Existing library and gallery
+positions are unchanged. The original .blend in `astra 1/admin_building` is
+untouched.
+
+`../prepare_admin.py` prepares the source model and nearby landscape for the
+browser, already enlarged to the placement's scale; `../build_admin_link.py`
+creates the road, terrain extension and new
+`../output/NIT_Silchar_Campus_With_Administration.blend`. The shared placement
+is in `lib/admin-placement.json`; after changing its scale, re-run both scripts
+(the tests fail until you do). Source exports live in `../output/admin_source*`
+and are copied to `public/assets/admin*` for the player.
+
 The lecture gallery's shell is a hand-built reconstruction, modelled from the
 same six drone photographs plus four ground photographs, in
 `../gallery_reference.blend`. It replaced a Meshy photogrammetry sculpt whose
@@ -51,9 +83,10 @@ in width, surface or kerb.
 
 The download is staged. Everything needed to stand up and walk — campus,
 walkable collision, the student and the tree list — arrives first with a real
-percentage on the start panel, and the outlying buildings (library and lecture
-gallery) stream in afterwards while you are already exploring; a small chip
-shows their progress and both destinations stay greyed out until they land. Over the wire the whole campus is
+percentage on the start panel, and the outlying buildings (library, lecture
+gallery and administration) stream in afterwards while you are already
+exploring; a small chip shows their progress and their destinations stay greyed
+out until they land. Over the wire the whole campus is
 about 4.3 MB: `campus.glb` and `library.glb` are Draco-compressed, the character
 and aerial textures are JPEG rather than PNG, and `scripts/serve.mjs` gzips
 what is left. Uncompressed, the same assets were about 41 MB.
@@ -66,7 +99,9 @@ browser, where a Draco decoder needs a worker that Node does not provide.
 
 `npm test` checks player collisions, field spawn heights, the jump arc on the
 real campus mesh, character animations, concert alignment, road continuity, the
-statue budget, and that no tree is planted in a carriageway.
+statue budget, and that no tree is planted in a carriageway. For the
+administration it also checks the export's scale, the ramp up to the 3.75 m
+podium, a courtyard clear of cars, and the front street running on past the plot.
 
 The road corridor is kept clear of trunks twice over: the aerial planting list
 is filtered against every road centre line as it loads, and the gallery's own
@@ -79,7 +114,9 @@ the walkable collision tree already covers, so it never grows through roads,
 courts, stages or steps. Blades bend away from the student and spring back
 behind him. Tiles beyond half the planting radius are sown thinner, so the lawn
 reaches the horizon while staying thick underfoot. Radius and density both
-follow the graphics quality setting.
+follow the graphics quality setting. A lawn more than 0.7 m up is taken for a
+roof garden and left bare, except the administration's, which climbs its slopes
+to the raised podium.
 
 The student ships with Walk, Run, Idle and a cycling clip. Jumping has no clip,
 so it is posed on top of whichever one is playing, blended by weight rather than

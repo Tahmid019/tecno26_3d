@@ -1,0 +1,467 @@
+{
+  "trees": [
+    {
+      "name": "Tree 01 pine",
+      "position": [
+        -12.875,
+        2.6914,
+        21.125
+      ],
+      "height": 9.6801,
+      "width": 4.4811,
+      "trunkRadius": 0.18,
+      "kind": "pine"
+    },
+    {
+      "name": "Tree 02 pine",
+      "position": [
+        6.25,
+        2.6689,
+        21.25
+      ],
+      "height": 9.0309,
+      "width": 4.2854,
+      "trunkRadius": 0.17,
+      "kind": "pine"
+    },
+    {
+      "name": "Tree 03 pine",
+      "position": [
+        24.375,
+        2.805,
+        20.5
+      ],
+      "height": 10.6395,
+      "width": 5.1339,
+      "trunkRadius": 0.2,
+      "kind": "pine"
+    },
+    {
+      "name": "Tree 04 pine",
+      "position": [
+        -19.0,
+        0.2963,
+        38.125
+      ],
+      "height": 7.6325,
+      "width": 3.4667,
+      "trunkRadius": 0.14,
+      "kind": "pine"
+    },
+    {
+      "name": "Tree 05 pine",
+      "position": [
+        15.0,
+        1.1953,
+        30.625
+      ],
+      "height": 6.5752,
+      "width": 2.9971,
+      "trunkRadius": 0.12,
+      "kind": "pine"
+    },
+    {
+      "name": "Tree 06 pine",
+      "position": [
+        -58.75,
+        -0.0,
+        26.25
+      ],
+      "height": 7.1177,
+      "width": 3.2802,
+      "trunkRadius": 0.13,
+      "kind": "pine"
+    },
+    {
+      "name": "Tree 07 pine",
+      "position": [
+        38.125,
+        3.75,
+        15.0
+      ],
+      "height": 8.5501,
+      "width": 4.0119,
+      "trunkRadius": 0.16,
+      "kind": "pine"
+    },
+    {
+      "name": "Tree 08 rain",
+      "position": [
+        -12.5,
+        0.1781,
+        40.625
+      ],
+      "height": 5.0706,
+      "width": 6.0441,
+      "trunkRadius": 0.189,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 09 rain",
+      "position": [
+        11.875,
+        0.104,
+        41.875
+      ],
+      "height": 5.5158,
+      "width": 7.1384,
+      "trunkRadius": 0.2025,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 14 rain",
+      "position": [
+        70.0,
+        0.0,
+        62.5
+      ],
+      "height": 13.878,
+      "width": 17.2518,
+      "trunkRadius": 0.495,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 15 rain",
+      "position": [
+        55.0,
+        1.2794,
+        30.0
+      ],
+      "height": 15.653,
+      "width": 17.3326,
+      "trunkRadius": 0.5175,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 16 rain",
+      "position": [
+        65.0,
+        3.75,
+        5.0
+      ],
+      "height": 15.2179,
+      "width": 20.7589,
+      "trunkRadius": 0.5625,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 17 rain",
+      "position": [
+        66.25,
+        3.7126,
+        -17.5
+      ],
+      "height": 15.0285,
+      "width": 19.3773,
+      "trunkRadius": 0.54,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 18 rain",
+      "position": [
+        70.0,
+        0.0,
+        -40.0
+      ],
+      "height": 15.3733,
+      "width": 19.2535,
+      "trunkRadius": 0.585,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 19 rain",
+      "position": [
+        62.5,
+        0.0,
+        -62.5
+      ],
+      "height": 14.1274,
+      "width": 15.5508,
+      "trunkRadius": 0.495,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 20 rain",
+      "position": [
+        82.5,
+        0.6192,
+        32.5
+      ],
+      "height": 15.3063,
+      "width": 17.5323,
+      "trunkRadius": 0.54,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 21 rain",
+      "position": [
+        85.0,
+        1.875,
+        -2.5
+      ],
+      "height": 14.6404,
+      "width": 17.7152,
+      "trunkRadius": 0.5175,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 22 rain",
+      "position": [
+        87.5,
+        0.0,
+        -50.0
+      ],
+      "height": 14.4662,
+      "width": 19.0201,
+      "trunkRadius": 0.54,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 23 rain",
+      "position": [
+        -50.0,
+        0.0,
+        -65.0
+      ],
+      "height": 15.3875,
+      "width": 18.3079,
+      "trunkRadius": 0.54,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 24 rain",
+      "position": [
+        -22.5,
+        0.0,
+        -66.25
+      ],
+      "height": 12.9535,
+      "width": 17.8876,
+      "trunkRadius": 0.495,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 25 rain",
+      "position": [
+        2.5,
+        0.0,
+        -65.0
+      ],
+      "height": 16.0632,
+      "width": 19.1899,
+      "trunkRadius": 0.585,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 26 rain",
+      "position": [
+        27.5,
+        0.0,
+        -62.5
+      ],
+      "height": 14.3709,
+      "width": 19.6461,
+      "trunkRadius": 0.54,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 27 rain",
+      "position": [
+        38.75,
+        0.0,
+        -70.0
+      ],
+      "height": 13.8499,
+      "width": 16.6643,
+      "trunkRadius": 0.495,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 31 rain",
+      "position": [
+        -62.5,
+        0.0,
+        37.5
+      ],
+      "height": 14.5332,
+      "width": 16.5489,
+      "trunkRadius": 0.5175,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 32 rain",
+      "position": [
+        -70.0,
+        -0.0,
+        10.0
+      ],
+      "height": 16.6625,
+      "width": 21.0419,
+      "trunkRadius": 0.585,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 33 rain",
+      "position": [
+        -57.5,
+        0.0,
+        -55.0
+      ],
+      "height": 14.5693,
+      "width": 18.9962,
+      "trunkRadius": 0.54,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 34 rain",
+      "position": [
+        -102.5,
+        0.0,
+        -10.0
+      ],
+      "height": 16.7559,
+      "width": 21.074,
+      "trunkRadius": 0.585,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 35 rain",
+      "position": [
+        -102.5,
+        0.0,
+        -47.5
+      ],
+      "height": 14.7224,
+      "width": 20.1135,
+      "trunkRadius": 0.54,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 36 rain",
+      "position": [
+        -77.5,
+        0.0,
+        -57.5
+      ],
+      "height": 14.0224,
+      "width": 15.8393,
+      "trunkRadius": 0.495,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 37 rain",
+      "position": [
+        -65.0,
+        -0.0,
+        57.5
+      ],
+      "height": 14.4176,
+      "width": 18.0428,
+      "trunkRadius": 0.54,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 38 rain",
+      "position": [
+        -90.0,
+        -0.0,
+        27.5
+      ],
+      "height": 14.1197,
+      "width": 16.6238,
+      "trunkRadius": 0.495,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 39 rain",
+      "position": [
+        -59.375,
+        -0.0,
+        -2.5
+      ],
+      "height": 8.6756,
+      "width": 10.9212,
+      "trunkRadius": 0.315,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 40 rain",
+      "position": [
+        35.0,
+        0.0,
+        -52.5
+      ],
+      "height": 10.8091,
+      "width": 12.5738,
+      "trunkRadius": 0.405,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 41 gul",
+      "position": [
+        33.75,
+        3.75,
+        -6.875
+      ],
+      "height": 7.5701,
+      "width": 15.5899,
+      "trunkRadius": 0.3825,
+      "kind": "broadleaf"
+    },
+    {
+      "name": "Tree 42 gul",
+      "position": [
+        38.125,
+        3.75,
+        8.75
+      ],
+      "height": 5.665,
+      "width": 13.3274,
+      "trunkRadius": 0.315,
+      "kind": "broadleaf"
+    }
+  ],
+  "bakedScale": 1.25,
+  "boundsBlender": [
+    -107.5,
+    107.5,
+    -68.75,
+    81.25
+  ],
+  "boundsThree": [
+    -107.5,
+    107.5,
+    -81.25,
+    68.75
+  ],
+  "entrance": [
+    -3.4375,
+    0.0375,
+    49.375
+  ],
+  "front": [
+    0,
+    0,
+    1
+  ],
+  "roadEndpoints": [
+    [
+      -107.5,
+      0.0375,
+      49.375
+    ],
+    [
+      107.5,
+      0.0375,
+      49.375
+    ],
+    [
+      49.375,
+      0.0375,
+      -81.25
+    ]
+  ],
+  "displayTriangles": 289768,
+  "collisionTriangles": 81463,
+  "materialPrimitives": 69
+}

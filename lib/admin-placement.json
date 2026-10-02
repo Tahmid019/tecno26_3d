@@ -1,0 +1,39 @@
+{
+  "x": -918,
+  "z": 314,
+  "rotationDegrees": -38.41,
+  "scale": 1.25,
+  "sourceBounds": [
+    -86,
+    86,
+    -55,
+    65
+  ],
+  "entranceLocal": [
+    -2.75,
+    -34
+  ],
+  "road": [
+    [
+      -508,
+      268
+    ],
+    [
+      -620,
+      268
+    ],
+    [
+      -745,
+      268
+    ],
+    [
+      -818.51642,
+      268.0
+    ],
+    [
+      -828.83112,
+      281.00964
+    ]
+  ],
+  "basis": "Original drone GPS and source camera alignment; approximate, existing library/gallery placements preserved"
+}

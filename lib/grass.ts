@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CAMPUS_BOUNDS } from './campus-layout.ts';
 
 type Quality = 'performance' | 'balanced' | 'high';
 export type GrassSurface = { y: number; height: number };
@@ -10,8 +11,18 @@ const TRAILS = 12;
 export function grassHeight(materialName: string) {
   if (materialName === 'Campus | varied monsoon ground') return .17;
   if (materialName === 'Library | grass') return .14;
+  if (materialName === 'Site | lawn') return .14;
   if (materialName === 'Campus | turf' || materialName.startsWith('Cricket | packed drone turf')) return .05;
   return 0;
+}
+
+/**
+ * The highest a planting surface may stand and still grow blades. Anything
+ * higher is a roof garden, except the administration's lawns, which climb the
+ * slopes to its raised podium.
+ */
+export function grassCeiling(materialName: string) {
+  return materialName === 'Site | lawn' ? 4.5 : .7;
 }
 
 /**
@@ -25,7 +36,7 @@ export function createGrassProbe(lawns: THREE.Mesh[], solidHeight: (x: number, z
   ray.firstHitOnly = true;
   const entries = lawns.map(mesh => ({ mesh, bounds: new THREE.Box3().setFromObject(mesh) }));
   return (x, z) => {
-    if (x < -598 || x > 103 || z < -88 || z > 418) return null;
+    if (x < CAMPUS_BOUNDS.minX+2 || x > CAMPUS_BOUNDS.maxX-2 || z < CAMPUS_BOUNDS.minZ+2 || z > CAMPUS_BOUNDS.maxZ-2) return null;
     ray.ray.origin.set(x, 70, z);
     let closest: THREE.Intersection | undefined;
     for (const { mesh, bounds } of entries) {
@@ -33,11 +44,12 @@ export function createGrassProbe(lawns: THREE.Mesh[], solidHeight: (x: number, z
       const hit = ray.intersectObject(mesh, false)[0];
       if (hit && (!closest || hit.distance < closest.distance)) closest = hit;
     }
-    if (!closest || closest.point.y > .7) return null;
-    const covering = solidHeight(x, z);
-    if (covering !== null && covering > closest.point.y + .05) return null;
+    if (!closest) return null;
     const mesh = closest.object as THREE.Mesh;
     const material = Array.isArray(mesh.material) ? mesh.material[closest.face?.materialIndex || 0] : mesh.material;
+    if (closest.point.y > grassCeiling(material.name)) return null;
+    const covering = solidHeight(x, z);
+    if (covering !== null && covering > closest.point.y + .01) return null;
     const height = grassHeight(material.name);
     return height ? { y: closest.point.y + .003, height } : null;
   };

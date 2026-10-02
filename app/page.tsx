@@ -15,6 +15,7 @@ const PLACES: { id: Landmark; name: string }[] = [
   { id: 'concert', name: 'Concert' },
   { id: 'library', name: 'Library' },
   { id: 'gallery', name: 'Lecture gallery' },
+  { id: 'admin', name: 'Administration' },
 ];
 
 export default function Campus() {
@@ -55,7 +56,7 @@ export default function Campus() {
         <div className={`places ${open ? 'open' : ''}`}>
           <Button className="places-toggle" disabled={!state.ready} aria-expanded={open} onClick={() => setOpen(v => !v)}><Map size={15} />{state.location}<ChevronDown size={15} className="caret" /></Button>
           {open && <div className="places-menu" role="menu">
-            {PLACES.map(p => <button key={p.id} role="menuitem" disabled={(p.id === 'library' || p.id === 'gallery') && !state.outerReady} onClick={() => go(p.id)}>{p.name}{(p.id === 'library' || p.id === 'gallery') && !state.outerReady && <em>{state.outerPercent}%</em>}<ArrowUpRight size={13} /></button>)}
+            {PLACES.map(p => <button key={p.id} role="menuitem" disabled={['library','gallery','admin'].includes(p.id) && !state.outerReady} onClick={() => go(p.id)}>{p.name}{['library','gallery','admin'].includes(p.id) && !state.outerReady && <em>{state.outerPercent}%</em>}<ArrowUpRight size={13} /></button>)}
             <button role="menuitem" className="overview" onClick={() => { setOpen(false); if (state.overview) game.current?.setPlaying(true); else game.current?.overview(); }}><Map size={14} />{state.overview ? 'Back to player' : 'Campus overview'}</button>
           </div>}
         </div>

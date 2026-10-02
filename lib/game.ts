@@ -5,11 +5,14 @@ import { computeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 import { PlayerPhysics, movementVector, CollisionWorld } from './physics';
 import { createConcert, CONCERT } from './concert';
 import { createSky } from './sky';
-import { LIBRARY, GALLERY, onLibraryConnection, distanceToRoads } from './campus-layout';
-import { applyLibraryMaterials } from './library-materials';
+import { LIBRARY, GALLERY, ADMIN, ADMIN_ROTATION, ADMIN_ROAD, CAMPUS_BOUNDS, onLibraryConnection, distanceToRoads } from './campus-layout';
+import { applyLibraryMaterials, daylightEnvironment } from './library-materials';
+import { applyAdminMaterials } from './admin-materials';
 import { createGrass, createGrassProbe, grassHeight } from './grass';
 import { createDownloader, STAGES } from './assets';
 import { createBicycle, BICYCLE_SPEED, BICYCLE_SPRINT, MOUNT_RANGE } from './bicycle';
+import { FollowCamera, FixedStep, CAMERA_PASSES_THROUGH } from './follow-camera';
+import { createTreeStand, type Tree } from './trees';
 
 export const LANDMARKS = {
   gym: { label:'Sports complex', x:-20, z:67, yaw:0 },
@@ -18,13 +21,13 @@ export const LANDMARKS = {
   courts: { label:'Basketball courts', x:-13, z:242, yaw:Math.PI },
   concert: { label:'TECNOESIS concert', x:-28, z:170, yaw:-Math.PI/2 },
   library: { label:'APJ Abdul Kalam Library', x:LIBRARY.entrance.x, z:LIBRARY.entrance.z-5, yaw:0 },
-  gallery: { label:'Lecture gallery', x:GALLERY.entrance.x, z:GALLERY.entrance.z-8, yaw:Math.PI },
+  gallery: { label:'Lecture gallery', x:GALLERY.entrance.x, z:GALLERY.entrance.z-15, yaw:Math.PI },
+  admin: { label:'Administration building', x:ADMIN.entrance.x, z:ADMIN.entrance.z, yaw:ADMIN_ROTATION },
 } as const;
 export type Landmark = keyof typeof LANDMARKS;
 export type Quality = 'performance' | 'balanced' | 'high';
 export type GameState = { ready:boolean; playing:boolean; progress:string; error:string; fps:number; location:string; x:number; z:number; motion:string; percent:number; outerPercent:number; outerReady:boolean; runLock:boolean; riding:boolean; canMount:boolean; y?:number; grounded?:boolean; overview?:boolean; quality?:Quality; draws?:number; triangles?:number; animationTime?:number; crowdCount?:number };
 export type Game = { setPlaying:(value:boolean)=>void; reset:()=>void; dispose:()=>void; travel:(id:Landmark)=>void; overview:()=>void; setQuality:(q:Quality)=>void; input:(key:string,pressed:boolean)=>void; move:(x:number,y:number)=>void; toggleRun:()=>void; toggleRide:()=>void; getState:()=>GameState };
-type Tree = {position:number[];height:number;width:number};
 type TreeFile = {trees:Tree[];roads:number[][][]};
 
 // The character ships with Walk, Run and Idle and nothing else, so leaving the
@@ -42,26 +45,43 @@ const AIR_POSE:Record<string,[number,number,number]> = {
 export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>void):Promise<Game> {
   const state:GameState={ready:false,playing:false,progress:'Downloading the campus',error:'',fps:0,location:'Sports complex',x:-20,z:67,motion:'Idle',percent:0,outerPercent:0,outerReady:false,runLock:false,riding:false,canMount:false,quality:'balanced',overview:false};
   const publish=()=>onState({...state});
-  const scene=new THREE.Scene();scene.background=new THREE.Color('#bdd7df');scene.fog=new THREE.Fog('#bdd7df',240,700);
+  const scene=new THREE.Scene();scene.background=new THREE.Color('#bdd7df');const campusFog=new THREE.Fog('#bdd7df',240,700);scene.fog=campusFog;
   const mobile=matchMedia('(pointer:coarse)').matches;
   const renderer=new THREE.WebGLRenderer({antialias:!mobile,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,mobile?1.4:1.25));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1;
   host.appendChild(renderer.domElement);renderer.domElement.tabIndex=0;renderer.domElement.setAttribute('aria-label','Campus: drag to look, on-screen pad to move');
-  const camera=new THREE.PerspectiveCamera(58,1,.08,1700);
+  const camera=new THREE.PerspectiveCamera(58,1,.08,4000);
   camera.position.set(115,145,-50);camera.lookAt(-75,0,120);
   scene.add(new THREE.HemisphereLight(0xd8efff,0x68794c,1.7));
   const sun=new THREE.DirectionalLight(0xfff0d2,2.4);sun.position.set(220,265,-480);scene.add(sun);
   // Library geometry casts soft daylight shadows across its steps and gardens.
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
-  sun.castShadow=true;sun.shadow.mapSize.set(mobile?1024:1536,mobile?1024:1536);
-  Object.assign(sun.shadow.camera,{left:-86,right:86,top:86,bottom:-86,near:1,far:360});
-  sun.shadow.camera.updateProjectionMatrix();sun.shadow.normalBias=.055;sun.shadow.bias=-.00015;
+  const shadowSpan=mobile?64:86,shadowSize=mobile?1024:1536;
+  sun.castShadow=true;sun.shadow.mapSize.set(shadowSize,shadowSize);
+  Object.assign(sun.shadow.camera,{left:-shadowSpan,right:shadowSpan,top:shadowSpan,bottom:-shadowSpan,near:1,far:360});
+  sun.shadow.camera.updateProjectionMatrix();
+  // The sun stands 27 degrees up, so across one shadow-map texel a flat
+  // forecourt drops away by twice the texel's width. The normal offset has to
+  // clear the whole filter footprint, one and a half texels for the default
+  // radius, or paving and roofs break into bands of moire rings that look like
+  // the ground fighting the building.
+  sun.shadow.normalBias=1.65*2*shadowSpan/shadowSize;sun.shadow.bias=-.0002;
   scene.add(sun.target);
+  // The shadow map follows the student in whole texels of its own grid.
+  // Sliding it by fractions of a texel made every shadow edge crawl on the move.
+  const SUN_OFFSET=new THREE.Vector3(63,76,-138),sunward=SUN_OFFSET.clone().normalize();
+  const sunAcross=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),sunward).normalize(),sunAlong=new THREE.Vector3().crossVectors(sunward,sunAcross);
+  const aimSun=(at:THREE.Vector3)=>{
+    const texel=(sun.shadow.camera.right-sun.shadow.camera.left)/sun.shadow.mapSize.x;
+    const snap=(v:number)=>Math.round(v/texel)*texel;
+    sun.target.position.copy(sunAcross).multiplyScalar(snap(at.dot(sunAcross))).addScaledVector(sunAlong,snap(at.dot(sunAlong))).addScaledVector(sunward,at.dot(sunward));
+    sun.position.copy(sun.target.position).add(SUN_OFFSET);sun.target.updateMatrixWorld();
+  };
   const sky=createSky();scene.add(sky.group);
   const size=()=>{renderer.setSize(host.clientWidth,host.clientHeight);camera.aspect=host.clientWidth/host.clientHeight;camera.updateProjectionMatrix();};
   const observer=new ResizeObserver(size);observer.observe(host);size();
-  const keys=new Set<string>();let disposed=false,frame=0;let disposeLibraryMaterials=()=>{};
-  const cleanupResources=()=>{observer.disconnect();scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material]){for(const value of Object.values(m))if(value instanceof THREE.Texture)value.dispose();m.dispose();}}});disposeLibraryMaterials();renderer.dispose();renderer.domElement.remove();};
+  const keys=new Set<string>();let disposed=false,frame=0;let disposeDaylight=()=>{};
+  const cleanupResources=()=>{observer.disconnect();scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material]){for(const value of Object.values(m))if(value instanceof THREE.Texture)value.dispose();m.dispose();}}});disposeDaylight();renderer.dispose();renderer.domElement.remove();};
   try {
     const draco=new DRACOLoader().setDecoderPath('/draco/');
     const loader=new GLTFLoader().setDRACOLoader(draco);
@@ -80,20 +100,21 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     // animation frames at all, and the build would stall until it came back.
     await new Promise(resolve=>setTimeout(resolve,0));
 
-    const cameraMeshes:THREE.Mesh[]=[];
+    const cameraMeshes:THREE.Mesh[]=[],cameraObstacles:THREE.Mesh[]=[];
+    const solidForCamera=(o:THREE.Mesh)=>{cameraMeshes.push(o);if(!CAMERA_PASSES_THROUGH.test((o.material as THREE.Material).name||''))cameraObstacles.push(o);};
     const prepare=(root:THREE.Object3D)=>{root.traverse(o=>{if(o instanceof THREE.Mesh){
-      computeBoundsTree.call(o.geometry);o.raycast=acceleratedRaycast;cameraMeshes.push(o);
+      computeBoundsTree.call(o.geometry);o.raycast=acceleratedRaycast;solidForCamera(o);
       const m=o.material as THREE.MeshStandardMaterial;
       if(m.map)m.map.anisotropy=Math.min(mobile?4:8,renderer.capabilities.getMaxAnisotropy());
       if(m.name.includes('full-pitch chalk'))m.color.set('#c5cbb2');
-      if(!m.name.startsWith('Library | ')&&/turf|earth|grass|asphalt|clay|ochre|plaster/i.test(m.name)&&!m.map)addSurfaceGrain(m);
+      if(!m.name.startsWith('Library | ')&&/turf|earth|grass|asphalt|clay|ochre|plaster|paver/i.test(m.name)&&!m.map)addSurfaceGrain(m);
     }});};
 
     const campus=await loader.parseAsync(campusBytes,'');
     scene.add(campus.scene);campus.scene.updateMatrixWorld(true);
     prepare(campus.scene);
     const concert=createConcert();scene.add(concert.root);state.crowdCount=concert.crowdCount;
-    concert.root.updateMatrixWorld(true);concert.root.traverse(o=>{if(o instanceof THREE.Mesh && !(o instanceof THREE.InstancedMesh) && !(o.material as THREE.Material).transparent){computeBoundsTree.call(o.geometry);o.raycast=acceleratedRaycast;cameraMeshes.push(o);}});
+    concert.root.updateMatrixWorld(true);concert.root.traverse(o=>{if(o instanceof THREE.Mesh && !(o instanceof THREE.InstancedMesh) && !(o.material as THREE.Material).transparent){computeBoundsTree.call(o.geometry);o.raycast=acceleratedRaycast;solidForCamera(o);}});
 
     const colliders=new THREE.Group();
     colliders.add((await loader.parseAsync(collisionBytes,'')).scene,concert.colliders);
@@ -138,7 +159,7 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     const trees=treeFile.trees.filter(t=>
       !onLibraryConnection(t.position[0],t.position[2],t.width*.45+6.4)
       && distanceToRoads(t.position[0],t.position[2],roads)>4.9);
-    const vegetation=makeTrees(trees);scene.add(vegetation);
+    const stand=createTreeStand(trees,'Campus trees',!mobile);scene.add(stand.group);
     const trunkCollisions=new THREE.Group();
     for(const t of trees){if(t.height<3)continue;const o=new THREE.Mesh(new THREE.BoxGeometry(Math.max(.25,t.width*.07),2.6,Math.max(.25,t.width*.07)));o.position.set(t.position[0],1.3+t.position[1],t.position[2]);trunkCollisions.add(o);}
     const treeWorld=new CollisionWorld(trunkCollisions);
@@ -149,7 +170,9 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     // never appears on roads, courts, stages, steps or under buildings.
     const lawns=cameraMeshes.filter(o=>grassHeight((o.material as THREE.Material).name||'')>0);
     const probeRay=new THREE.Ray(new THREE.Vector3(),new THREE.Vector3(0,-1,0));
-    const grass=createGrass(createGrassProbe(lawns,(x,z)=>{probeRay.origin.set(x,70,z);const hit=world.rayIntersect(probeRay);return hit?hit.position.y:null;}));
+    const groundHeight=(x:number,z:number)=>{probeRay.origin.set(x,70,z);const hit=world.rayIntersect(probeRay);return hit?hit.position.y:null;};
+    let grassProbe=createGrassProbe(lawns,groundHeight);
+    const grass=createGrass((x,z)=>grassProbe(x,z));
     scene.add(grass.group);
 
     // The bicycle is built around the cycling clip rather than the other way
@@ -205,33 +228,28 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     const crankPoint=new THREE.Vector3();
     let ride=0,air=0,offGround=0,rideHeading=0;
 
-    let yaw=0,pitch=.26,distance=mobile?6.2:5.4,boom=mobile?6.2:5.4,drag=false,hasStarted=false,stickX=0,stickY=0;
-    let prev=performance.now(),acc=0,frames=0,simulation=0,lastJump=false,eventTime=0;
+    let yaw=0,pitch=.26,distance=mobile?6.2:5.4,drag=false,hasStarted=false,stickX=0,stickY=0;
+    let prev=performance.now(),acc=0,frames=0,lastJump=false,eventTime=0;
     let shadowPrimed=false;
     const camRay=new THREE.Raycaster();camRay.firstHitOnly=true;
-    const target=new THREE.Vector3(),desired=new THREE.Vector3(),offset=new THREE.Vector3(),direction=new THREE.Vector3(),zero=new THREE.Vector3();
+    const rig=new FollowCamera((origin,ray,far)=>{camRay.set(origin,ray);camRay.far=far;const hit=camRay.intersectObjects(cameraObstacles,false)[0];return hit?hit.distance:null;});
+    const direction=new THREE.Vector3(),zero=new THREE.Vector3();
     const follow=(dt:number,snap=false)=>{
-      target.copy(avatar.position).add(new THREE.Vector3(0,state.riding?1.55:1.3,0));
-      offset.set(Math.sin(yaw)*Math.cos(pitch)*distance,Math.sin(pitch)*distance+1,Math.cos(yaw)*Math.cos(pitch)*distance);
-      const reach=offset.length();
-      camRay.set(target,offset.clone().normalize());camRay.far=reach+.2;
-      const hit=camRay.intersectObjects(cameraMeshes,false)[0];
-      const wanted=hit&&hit.distance<reach?Math.max(.55,hit.distance-.25):reach;
-      // Only the boom length reacts to obstacles, and the position always
-      // eases. Snapping the camera on frames where the ray hit and easing on
-      // frames where it missed made it judder every frame at riding speed,
-      // because at that speed the ray flickers on and off kerbs and verges.
-      boom=snap?wanted:wanted<boom?wanted:boom+(wanted-boom)*(1-Math.exp(-dt*3.5));
-      offset.setLength(boom);
-      desired.copy(target).add(offset);
-      if(snap)camera.position.copy(desired);else camera.position.lerp(desired,1-Math.exp(-dt*14));
-      camera.lookAt(target);avatar.visible=camera.position.distanceTo(target)>1;
+      rig.update(dt,avatar.position,state.riding?1.55:1.3,yaw,pitch,distance,snap);
+      camera.position.copy(rig.position);camera.lookAt(rig.target);
+      avatar.visible=camera.position.distanceTo(rig.target)>1;
     };
-    const setPlaying=(v:boolean)=>{if(!state.ready&&v)return;state.playing=v;state.overview=false;keys.clear();state.runLock=false;stickX=0;stickY=0;drag=false;if(v){if(!hasStarted){hasStarted=true;follow(0,true);}renderer.domElement.focus();}publish();};
-    const travel=(id:Landmark)=>{const p=LANDMARKS[id];if(!p)throw new Error('Unknown campus destination');if((id==='library'||id==='gallery')&&!state.outerReady)return;const floor=world.rayIntersect(new THREE.Ray(new THREE.Vector3(p.x,10,p.z),new THREE.Vector3(0,-1,0)));physics.teleport(p.x,(floor?floor.position.y:0)+.015,p.z);avatar.position.copy(physics.feet);yaw=p.yaw;pitch=id==='library'||id==='gallery'?-.16:id==='concert'?-.06:.26;avatar.rotation.y=yaw+Math.PI;if(state.riding)parkBicycle();state.location=p.label;state.x=p.x;state.y=avatar.position.y;state.z=p.z;state.grounded=false;state.overview=false;state.playing=true;state.runLock=false;stickX=0;stickY=0;hasStarted=true;keys.clear();drag=false;follow(0,true);publish();renderer.domElement.focus();};
+    // The student is drawn between the last two physics steps, never at one.
+    const stepper=new FixedStep(1/120,12);
+    const lastFeet=physics.feet,nextFeet=physics.feet;
+    const settle=()=>{stepper.reset();lastFeet.copy(physics.feet);nextFeet.copy(lastFeet);avatar.position.copy(lastFeet);};
+    const setPlaying=(v:boolean)=>{if(!state.ready&&v)return;state.playing=v;state.overview=false;scene.fog=campusFog;camera.up.set(0,1,0);sky.group.visible=true;keys.clear();state.runLock=false;stickX=0;stickY=0;drag=false;if(v){hasStarted=true;follow(0,true);renderer.domElement.focus();}publish();};
+    const travel=(id:Landmark)=>{const p=LANDMARKS[id];if(!p)throw new Error('Unknown campus destination');if(['library','gallery','admin'].includes(id)&&!state.outerReady)return;const floor=world.rayIntersect(new THREE.Ray(new THREE.Vector3(p.x,10,p.z),new THREE.Vector3(0,-1,0)));physics.teleport(p.x,(floor?floor.position.y:0)+.015,p.z);settle();yaw=p.yaw;pitch=['library','gallery','admin'].includes(id)?-.16:id==='concert'?-.06:.26;avatar.rotation.y=yaw+Math.PI;if(state.riding)parkBicycle();scene.fog=campusFog;camera.up.set(0,1,0);sky.group.visible=true;state.location=p.label;state.x=p.x;state.y=avatar.position.y;state.z=p.z;state.grounded=false;state.overview=false;state.playing=true;state.runLock=false;stickX=0;stickY=0;hasStarted=true;keys.clear();drag=false;follow(0,true);publish();renderer.domElement.focus();};
     const reset=()=>travel('gym');
-    const overview=()=>{state.playing=false;state.overview=true;keys.clear();state.runLock=false;avatar.visible=true;camera.position.set(-160,Math.max(510,330/camera.aspect),75);camera.lookAt(-160,0,135);publish();};
-    const setQuality=(q:Quality)=>{if(!['performance','balanced','high'].includes(q))throw new Error('Unknown quality');state.quality=q;grass.setQuality(q);renderer.setPixelRatio(q==='performance'?.75:Math.min(devicePixelRatio,q==='high'?2:mobile?1.4:1.25));size();publish();};
+    const overview=()=>{state.playing=false;state.overview=true;keys.clear();state.runLock=false;avatar.visible=true;scene.fog=null;sky.group.visible=false;const height=Math.max(650,1250/camera.aspect)/(2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2)));camera.up.set(0,0,1);camera.position.set(-495,height,200);camera.lookAt(-495,0,200);publish();};
+    // High draws the leafy trees; the other settings keep the cheap ones.
+    const stands=[stand];
+    const setQuality=(q:Quality)=>{if(!['performance','balanced','high'].includes(q))throw new Error('Unknown quality');state.quality=q;grass.setQuality(q);for(const s of stands)s.setLeafy(q==='high');renderer.setPixelRatio(q==='performance'?.75:Math.min(devicePixelRatio,q==='high'?2:mobile?1.4:1.25));size();publish();};
     const input=(key:string,pressed:boolean)=>{if(!state.playing)return;if(pressed)keys.add(key);else keys.delete(key);
       // Reversing releases the sprint lock, the way it does on a game pad.
       if(pressed&&(key==='KeyS'||key==='ArrowDown')&&state.runLock){state.runLock=false;publish();}};
@@ -283,19 +301,38 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     // The library and the lecture gallery arrive while the campus is already
     // being walked, then the walkable tree is rebuilt to take them in.
     const streamOuter=async()=>{
-      const [libraryBytes,libraryCollisionBytes,galleryBytes,galleryCollisionBytes]=
+      const [libraryBytes,libraryCollisionBytes,galleryBytes,galleryCollisionBytes,libraryTreeBytes,galleryTreeBytes,adminBytes,adminCollisionBytes,adminTreeBytes,adminLinkBytes,adminLinkCollisionBytes]=
         await Promise.all(STAGES.outer.map(url=>download.get(url)));
       if(disposed)return;
+      const daylight=daylightEnvironment(renderer);disposeDaylight=()=>daylight.dispose();
       const library=await loader.parseAsync(libraryBytes,'');
-      disposeLibraryMaterials=applyLibraryMaterials(library.scene,renderer);
+      applyLibraryMaterials(library.scene,daylight.texture);
       const gallery=await loader.parseAsync(galleryBytes,'');
-      for(const outer of [library.scene,gallery.scene]){
+      const admin=await loader.parseAsync(adminBytes,'');
+      applyAdminMaterials(admin.scene,daylight.texture);
+      // The administration is exported already enlarged to its campus scale;
+      // only a scale changed since that export is left to apply here.
+      const adminFile=JSON.parse(new TextDecoder().decode(adminTreeBytes)) as {trees:Tree[];bakedScale?:number};
+      const adminScale=ADMIN.scale/(adminFile.bakedScale??1);
+      const placeAdmin=(root:THREE.Object3D)=>{root.position.set(ADMIN.x,0,ADMIN.z);root.rotation.y=ADMIN_ROTATION;root.scale.setScalar(adminScale);root.updateMatrixWorld(true);return root;};
+      placeAdmin(admin.scene);
+      const adminLink=await loader.parseAsync(adminLinkBytes,'');
+      for(const outer of [library.scene,gallery.scene,admin.scene,adminLink.scene]){
         outer.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
         scene.add(outer);outer.updateMatrixWorld(true);prepare(outer);
       }
+      // Their planting comes as a list, like the campus's, so it grows the
+      // same trees at every quality. The trunks are already in the collision.
+      const adminTrees=adminFile.trees.map(t=>{const p=new THREE.Vector3(...t.position as [number,number,number]).applyMatrix4(admin.scene.matrixWorld);return {...t,position:p.toArray()};});
+      const planted=[libraryTreeBytes,galleryTreeBytes].flatMap(bytes=>JSON.parse(new TextDecoder().decode(bytes)).trees as Tree[]).concat(adminTrees);
+      const outerStand=createTreeStand(planted,'Library, gallery and administration trees',!mobile);
+      outerStand.setLeafy(state.quality==='high');scene.add(outerStand.group);stands.push(outerStand);
       colliders.add((await loader.parseAsync(libraryCollisionBytes,'')).scene,
-        (await loader.parseAsync(galleryCollisionBytes,'')).scene);
+        (await loader.parseAsync(galleryCollisionBytes,'')).scene,
+        placeAdmin((await loader.parseAsync(adminCollisionBytes,'')).scene),
+        (await loader.parseAsync(adminLinkCollisionBytes,'')).scene);
       world.rebuild(colliders);
+      grassProbe=createGrassProbe(cameraMeshes.filter(o=>grassHeight((o.material as THREE.Material).name||'')>0),groundHeight);
       state.outerReady=true;state.outerPercent=100;publish();
     };
 
@@ -318,11 +355,15 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
       const jump=keys.has('Space');if(jump&&!lastJump&&state.playing&&!state.riding)physics.jump();lastJump=jump;
       const speed=state.riding?(running?BICYCLE_SPRINT:BICYCLE_SPEED):(running?5.5:2.25);
       if(state.playing||!hasStarted){
-        simulation+=elapsed;let steps=0;
-        while(simulation>=1/120&&steps++<12){physics.step(1/120,state.playing?direction:new THREE.Vector3(),speed);const hit=treeWorld.capsuleIntersect(physics.capsule);if(hit)physics.capsule.translate(hit.normal.multiplyScalar(hit.depth));simulation-=1/120;}
-        avatar.position.copy(physics.feet);
-        if(avatar.position.y < -5 || avatar.position.x < -600 || avatar.position.x > 105 || avatar.position.z < -90 || avatar.position.z > 420)reset();
-      }else simulation=0;
+        const blend=stepper.advance(elapsed,step=>{
+          lastFeet.copy(nextFeet);
+          physics.step(step,state.playing?direction:zero,speed);
+          const hit=treeWorld.capsuleIntersect(physics.capsule);if(hit)physics.capsule.translate(hit.normal.multiplyScalar(hit.depth));
+          nextFeet.copy(physics.feet);
+        });
+        avatar.position.lerpVectors(lastFeet,nextFeet,blend);
+        if(avatar.position.y < -5 || avatar.position.x < CAMPUS_BOUNDS.minX || avatar.position.x > CAMPUS_BOUNDS.maxX || avatar.position.z < CAMPUS_BOUNDS.minZ || avatar.position.z > CAMPUS_BOUNDS.maxZ)reset();
+      }else settle();
       const pace=Math.hypot(physics.velocity.x,physics.velocity.z);
       const moving=state.playing&&direction.lengthSq()>.01&&pace>.12;
       let turn=0;
@@ -376,7 +417,7 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
         avatar.worldToLocal(crankFoot.getWorldPosition(crankPoint));crankPoint.y+=rideLift;
         bicycle.setCranks(-Math.PI/2-Math.atan2(crankPoint.y-fit.crank.y,crankPoint.z-fit.crank.z));
       }
-      eventTime+=elapsed;concert.update(eventTime);sky.update(eventTime);
+      eventTime+=elapsed;concert.update(eventTime);sky.group.position.set(camera.position.x,0,camera.position.z);sky.update(eventTime);
       if(state.playing)follow(elapsed);
       const floor=world.rayIntersect(new THREE.Ray(avatar.position.clone().add(new THREE.Vector3(0,.3,0)),new THREE.Vector3(0,-1,0)));
       shadow.position.set(avatar.position.x,floor?floor.position.y+.025:avatar.position.y+.015,avatar.position.z);shadow.visible=avatar.visible;shadow.scale.setScalar(state.riding?1.5:physics.grounded?1:.8);
@@ -386,28 +427,22 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
       // rendered as bare sky. Prime it once, then refresh only near the library.
       const wantsShadows=avatar.position.x<-290&&state.quality!=='performance';
       sun.shadow.autoUpdate=false;sun.shadow.needsUpdate=wantsShadows||!shadowPrimed;shadowPrimed=true;
-      if(wantsShadows){sun.target.position.set(avatar.position.x,0,avatar.position.z);sun.position.copy(sun.target.position).add(new THREE.Vector3(63,76,-138));sun.target.updateMatrixWorld();}
+      if(wantsShadows)aimSun(avatar.position);
       grass.update(elapsed,avatar.position,physics.grounded,!!state.overview);
+      for(const s of stands)s.update(eventTime);
       renderer.render(scene,camera);acc+=elapsed;frames++;
       if(acc>.35){state.fps=Math.round(frames/acc);state.x=avatar.position.x;state.y=avatar.position.y;state.z=avatar.position.z;state.grounded=physics.grounded;state.draws=renderer.info.render.calls;state.triangles=renderer.info.render.triangles;state.animationTime=action.time;
         const near=!state.riding&&avatar.position.distanceTo(bicycle.group.position)<=MOUNT_RANGE;
         if(near!==state.canMount)state.canMount=near;
-        state.location=avatar.position.x<-450&&avatar.position.z>245?'Lecture gallery':avatar.position.x<-320?'APJ Abdul Kalam Library':onLibraryConnection(avatar.position.x,avatar.position.z,12)?'Road to the library':Math.abs(avatar.position.z-CONCERT.z)<18&&avatar.position.x>CONCERT.x-65&&avatar.position.x<CONCERT.x+8?'TECNOESIS concert':avatar.position.z<90?'Sports complex':avatar.position.x < -82?'Cricket ground':avatar.position.z>237?'Basketball courts':avatar.position.x<-35?'Between the grounds':'Football ground';
+        state.location=Math.hypot(avatar.position.x-ADMIN.x,avatar.position.z-ADMIN.z)<115*ADMIN.scale?'Administration building':distanceToRoads(avatar.position.x,avatar.position.z,[ADMIN_ROAD])<15?'NIT Road · Administration':avatar.position.x<-450&&avatar.position.z>245?'Lecture gallery':avatar.position.x<-320?'APJ Abdul Kalam Library':onLibraryConnection(avatar.position.x,avatar.position.z,12)?'Road to the library':Math.abs(avatar.position.z-CONCERT.z)<18&&avatar.position.x>CONCERT.x-65&&avatar.position.x<CONCERT.x+8?'TECNOESIS concert':avatar.position.z<90?'Sports complex':avatar.position.x < -82?'Cricket ground':avatar.position.z>237?'Basketball courts':avatar.position.x<-35?'Between the grounds':'Football ground';
         publish();acc=0;frames=0;}
     }
     state.ready=true;state.progress='Ready';state.percent=100;publish();frame=requestAnimationFrame(animate);
     void streamOuter().catch(e=>{state.progress=`The outlying buildings could not be loaded: ${e.message||e}`;publish();});
-    return {setPlaying,reset,travel,overview,setQuality,input,move,toggleRun,toggleRide,getState:()=>({...state}),dispose(){disposed=true;cancelAnimationFrame(frame);window.removeEventListener('keydown',down);window.removeEventListener('keyup',up);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',pointerUp);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('webglcontextlost',lost);mixer.stopAllAction();world.clear();treeWorld.clear();grass.dispose();bicycle.dispose();draco.dispose();cleanupResources();}};
+    return {setPlaying,reset,travel,overview,setQuality,input,move,toggleRun,toggleRide,getState:()=>({...state}),dispose(){disposed=true;cancelAnimationFrame(frame);window.removeEventListener('keydown',down);window.removeEventListener('keyup',up);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',pointerUp);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('webglcontextlost',lost);mixer.stopAllAction();world.clear();treeWorld.clear();grass.dispose();bicycle.dispose();for(const s of stands)s.dispose();draco.dispose();cleanupResources();}};
   } catch(error){cleanupResources();throw error;}
 }
 
-function makeTrees(trees:Tree[]) {
-  const group=new THREE.Group();const trunks=new THREE.InstancedMesh(new THREE.CylinderGeometry(.12,.22,1,6),new THREE.MeshStandardMaterial({color:0x665543,roughness:1}),trees.length);
-  const crowns=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,1),new THREE.MeshStandardMaterial({color:0xffffff,roughness:1}),trees.length*4);const dummy=new THREE.Object3D();
-  trees.forEach((t,i)=>{const [x,y,z]=t.position;dummy.position.set(x,y+t.height*.3,z);dummy.scale.set(t.width*.18,t.height*.6,t.width*.18);dummy.rotation.set(0,0,0);dummy.updateMatrix();trunks.setMatrixAt(i,dummy.matrix);
-    for(let j=0;j<4;j++){const a=j*2.4;dummy.position.set(x+Math.sin(a)*t.width*.17,y+t.height*(.6+(j%2)*.16),z+Math.cos(a)*t.width*.17);dummy.scale.set(t.width*.3,t.height*.29,t.width*.3);dummy.rotation.set(i*.15,j,0);dummy.updateMatrix();crowns.setMatrixAt(i*4+j,dummy.matrix);crowns.setColorAt(i*4+j,new THREE.Color().setHSL(.25+(i%5)*.012,.29,.18+(i%7)*.012));}
-  });group.add(trunks,crowns);return group;
-}
 function addSurfaceGrain(material:THREE.MeshStandardMaterial){
   material.onBeforeCompile=shader=>{
     shader.vertexShader='varying vec3 vWorldGrain;\n'+shader.vertexShader;

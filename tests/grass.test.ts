@@ -12,7 +12,7 @@ const lawn = (name: string, y = 0) => {
 
 test('only planting surfaces grow blades, and never taller than a mown campus lawn', () => {
   for (const name of ['Campus | varied monsoon ground', 'Library | grass', 'Campus | turf',
-                      'Cricket | packed drone turf and worn central strip']) {
+                      'Cricket | packed drone turf and worn central strip', 'Site | lawn']) {
     const height = grassHeight(name);
     assert.ok(height > 0 && height < .25, `${name} should plant short grass, got ${height}`);
   }
@@ -32,8 +32,10 @@ test('a covered lawn is left bare, an open one is planted', () => {
   assert.equal(surface!.height, grassHeight('Campus | varied monsoon ground'));
   // A road, court or building deck resting on the same lawn hides it.
   assert.equal(createGrassProbe([ground], () => .3)(3, -4), null);
-  // A kerb-height lip is still the same walking surface, not a cover.
-  assert.ok(createGrassProbe([ground], () => .07)(3, -4));
+  // Millimetre export tolerances stay planted, but thin administration pavers
+  // 2cm above the lawn must cover the blades just like a thick road deck.
+  assert.ok(createGrassProbe([ground], () => .055)(3, -4));
+  assert.equal(createGrassProbe([ground], () => .07)(3, -4), null);
   // Off the campus entirely.
   assert.equal(open(-900, 0), null);
 });
@@ -41,6 +43,15 @@ test('a covered lawn is left bare, an open one is planted', () => {
 test('a lawn far above the ground, such as a roof garden, is never planted', () => {
   const roof = lawn('Library | grass', 9);
   assert.equal(createGrassProbe([roof], () => null)(0, 0), null);
+  // The same height of ordinary campus ground is a roof too.
+  assert.equal(createGrassProbe([lawn('Campus | varied monsoon ground', 3.7)], () => null)(0, 0), null);
+});
+
+test("the administration's lawns are planted all the way up to its raised podium", () => {
+  const slope = lawn('Site | lawn', 3.7);
+  const surface = createGrassProbe([slope], () => null)(0, 0);
+  assert.ok(surface && surface.y > 3.7, 'the raised lawn beside the podium must be planted');
+  assert.equal(createGrassProbe([lawn('Site | lawn', 9)], () => null)(0, 0), null);
 });
 
 test('trampled blades spring back and settle', () => {
