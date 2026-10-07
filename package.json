@@ -9,7 +9,7 @@
     "dev": "vinext dev",
     "build": "node --import ./scripts/graceful-build-exit.mjs ./node_modules/vinext/dist/cli.js build",
     "start": "node scripts/serve.mjs",
-    "test": "node --experimental-transform-types --test tests/physics.test.ts tests/concert.test.ts tests/library.test.ts tests/grass.test.ts tests/camera.test.ts tests/admin.test.ts",
+    "test": "node --experimental-transform-types --test tests/physics.test.ts tests/concert.test.ts tests/library.test.ts tests/grass.test.ts tests/camera.test.ts tests/admin.test.ts tests/riding.test.ts tests/campus-life.test.ts",
     "lint": "oxlint",
     "format": "oxfmt"
   },

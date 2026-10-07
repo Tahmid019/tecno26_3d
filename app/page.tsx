@@ -1,8 +1,9 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Play, Pause, ArrowUpRight, RotateCcw, MapPin, MoveUpRight, Map, ChevronDown, ArrowBigUp, Bike } from 'lucide-react';
+import { Play, Pause, ArrowUpRight, RotateCcw, MapPin, MoveUpRight, Map, ChevronDown, ArrowBigUp, Bike, Bell, Volume2, VolumeX, Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Game, GameState, Landmark } from '@/lib/game';
+import type { TimeName } from '@/lib/daylight';
 import { registerCampusTools } from '@/lib/webmcp';
 import { CampusMap } from '@/components/campus-map';
 import { Joystick } from '@/components/joystick';
@@ -63,10 +64,10 @@ export default function Campus() {
         <Button className="square-button" aria-label={state.playing ? 'Pause' : 'Resume'} disabled={!state.ready} onClick={() => game.current?.setPlaying(!state.playing)}>{state.playing ? <Pause /> : <Play />}</Button>
       </div>
     </header>
-    {state.playing && <div className="hud location"><MapPin size={15} /><span>{state.location}</span></div>}
+    {state.playing && <div className="hud location"><MapPin size={15} /><span>{state.location}</span>{state.riding && <em className="speed">{state.speed ?? 0} km/h</em>}</div>}
     {!state.playing && !state.overview && <section className="hud start-panel">
       <div className="eyebrow">YOUR CAMPUS. ON FOOT.</div><h1>Take a walk.</h1>
-      <div className="control-guide"><span><MoveUpRight size={15} /> Drag to look</span><span className="desktop-only"><kbd>W A S D</kbd> Move</span><span className="desktop-only"><kbd>SHIFT</kbd> Run</span></div>
+      <div className="control-guide"><span><MoveUpRight size={15} /> Drag to look</span><span className="desktop-only"><kbd>W A S D</kbd> Move</span><span className="desktop-only"><kbd>SHIFT</kbd> Run</span><span className="desktop-only"><kbd>F</kbd> Bicycle</span><span className="desktop-only"><kbd>B</kbd> Bell</span><span className="desktop-only"><kbd>M</kbd> Sound</span></div>
       {state.error ? <div role="alert" className="error-message">{state.error}<Button className="play-button" onClick={() => window.location.reload()}>Reload campus</Button></div>
         : state.ready ? <Button className="play-button" onClick={() => game.current?.setPlaying(true)}><Play size={17} fill="currentColor" /> Enter campus <ArrowUpRight className="arrow" /></Button>
         : <div className="loading"><div className="loading-track"><i style={{ width: `${state.percent}%` }} /></div><span>{state.progress} · {state.percent}%</span></div>}
@@ -77,15 +78,21 @@ export default function Campus() {
       <Joystick locked={state.runLock} onMove={stick} onLock={() => game.current?.toggleRun()} />
       <div className="actions">
         {(state.canMount || state.riding) && <Button aria-label={state.riding ? 'Get off the bicycle' : 'Ride the bicycle'} className={`round ride ${state.riding ? 'on' : ''}`} onClick={() => game.current?.toggleRide()}><Bike size={26} /></Button>}
-        {!state.riding && <Button aria-label="Jump" className="round jump" {...hold('Space')}><ArrowBigUp size={30} /></Button>}
+        {state.riding && <Button aria-label="Ring the bell" className="round bell" onClick={() => game.current?.bell()}><Bell size={24} /></Button>}
+        <Button aria-label={state.riding ? 'Hop' : 'Jump'} className="round jump" {...hold('Space')}><ArrowBigUp size={30} /></Button>
       </div>
     </div>}
     <footer className="hud bottom-bar">
       <span className="fps">{state.fps ? `${state.fps} FPS` : ''}</span>
       <div className="performance">
+        {state.time && <span className="clock" aria-label={`Campus time ${state.time}`}>{(() => { const h = Number(state.time.slice(0, 2)); return h < 6 || h >= 18 ? <Moon size={13} /> : <Sun size={13} />; })()}{state.time}</span>}
+        <select aria-label="Time of day" value={state.timeMode || 'auto'} onChange={e => game.current?.setTime(e.target.value as TimeName)}>
+          <option value="auto">Day &amp; night</option><option value="morning">Morning</option><option value="noon">Noon</option><option value="evening">Evening</option><option value="night">Night</option>
+        </select>
         <select aria-label="Graphics quality" value={state.quality || 'balanced'} onChange={e => game.current?.setQuality(e.target.value as 'performance' | 'balanced' | 'high')}>
           <option value="performance">Performance</option><option value="balanced">Balanced</option><option value="high">High</option>
         </select>
+        <Button className="square-button" aria-label={state.sound === false ? 'Turn sound on' : 'Turn sound off'} aria-pressed={state.sound !== false} onClick={() => game.current?.setSound(state.sound === false)}>{state.sound === false ? <VolumeX size={16} /> : <Volume2 size={16} />}</Button>
         <Button className="square-button" aria-label="Reset to sports complex" disabled={!state.ready} onClick={() => game.current?.reset()}><RotateCcw size={16} /></Button>
       </div>
     </footer>

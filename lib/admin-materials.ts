@@ -14,7 +14,7 @@ const REFLECTIONS: [RegExp, number][] = [
   [/^(Cladding|Columns|Railings|Frames) \|/, .55],
 ];
 
-export function applyAdminMaterials(root: THREE.Object3D, environment: THREE.Texture) {
+export function applyAdminMaterials(root: THREE.Object3D, environment: THREE.Texture | null) {
   root.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
     for (const material of Array.isArray(object.material) ? object.material : [object.material]) {

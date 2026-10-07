@@ -26,6 +26,12 @@ export function createTreeStand(trees: Tree[], name: string, multisampled: boole
   group.name = name;
   const plain = plainTrees(trees);
   group.add(plain);
+  plain.traverse(o => { if (o instanceof THREE.Mesh) o.castShadow = true; });
+  // Under the leafy trees the ground is shaded by stand-ins: one rough crown
+  // and a trunk apiece, never drawn themselves, for a fraction of what the
+  // leaves would cost the shadow map.
+  const casters = shadowCasters(trees);
+  group.add(casters.group);
   let leafy: ReturnType<typeof leafyTrees> | null = null;
   return {
     group,
@@ -33,21 +39,41 @@ export function createTreeStand(trees: Tree[], name: string, multisampled: boole
     setLeafy(on: boolean) {
       if (on && !leafy) { leafy = leafyTrees(trees, multisampled); group.add(leafy.group); }
       plain.visible = !on;
+      casters.group.visible = on;
       if (leafy) leafy.group.visible = on;
     },
     update(time: number) { if (leafy?.group.visible) leafy.time.value = time; },
     dispose() {
       plain.traverse(o => { if (o instanceof THREE.Mesh) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); } });
+      casters.dispose();
       if (leafy) { group.remove(leafy.group); leafy.release(); }
     },
   };
 }
 export type TreeStand = ReturnType<typeof createTreeStand>;
 
+/** Shadow stand-ins: a low-poly crown and trunk per tree, unseen by the camera. */
+function shadowCasters(trees: Tree[]) {
+  const group = new THREE.Group(); group.name = 'Trees | shadow casters'; group.visible = false;
+  const unseen = new THREE.MeshBasicMaterial({ name: 'Trees | shadow casters', colorWrite: false, depthWrite: false });
+  const broad = trees.filter(t => t.kind !== 'pine'), pines = trees.filter(t => t.kind === 'pine');
+  const crown = new THREE.IcosahedronGeometry(1, 0), spire = new THREE.ConeGeometry(1, 1, 6), trunk = new THREE.CylinderGeometry(.5, .5, 1, 5);
+  const crowns = new THREE.InstancedMesh(crown, unseen, Math.max(1, broad.length));
+  const spires = new THREE.InstancedMesh(spire, unseen, Math.max(1, pines.length));
+  const trunks = new THREE.InstancedMesh(trunk, unseen, Math.max(1, trees.length));
+  crowns.count = broad.length; spires.count = pines.length; trunks.count = trees.length;
+  const dummy = new THREE.Object3D();
+  broad.forEach((t, i) => { const [x, y, z] = t.position; dummy.position.set(x, y + t.height * .67, z); dummy.scale.set(t.width * .42, t.height * .3, t.width * .42); dummy.updateMatrix(); crowns.setMatrixAt(i, dummy.matrix); });
+  pines.forEach((t, i) => { const [x, y, z] = t.position; dummy.position.set(x, y + t.height * .6, z); dummy.scale.set(t.width * .45, t.height * .8, t.width * .45); dummy.updateMatrix(); spires.setMatrixAt(i, dummy.matrix); });
+  trees.forEach((t, i) => { const [x, y, z] = t.position; dummy.position.set(x, y + t.height * .3, z); dummy.scale.set(t.width * .07, t.height * .6, t.width * .07); dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix); });
+  for (const mesh of [crowns, spires, trunks]) { mesh.castShadow = true; mesh.computeBoundingSphere(); group.add(mesh); }
+  return { group, dispose() { for (const mesh of [crowns, spires, trunks]) mesh.dispose(); crown.dispose(); spire.dispose(); trunk.dispose(); unseen.dispose(); } };
+}
+
 function plainTrees(trees: Tree[]) {
-  const group=new THREE.Group();const trunks=new THREE.InstancedMesh(new THREE.CylinderGeometry(.12,.22,1,6),new THREE.MeshStandardMaterial({color:0x665543,roughness:1}),trees.length);
+  const group=new THREE.Group();const trunks=new THREE.InstancedMesh(new THREE.CylinderGeometry(.12,.22,1,6),new THREE.MeshStandardMaterial({name:'Plain trees | trunks',color:0x665543,roughness:1}),trees.length);
   const broad=trees.filter(t=>t.kind!=='pine'),pines=trees.filter(t=>t.kind==='pine');
-  const crowns=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,1),new THREE.MeshStandardMaterial({color:0xffffff,roughness:1}),broad.length*4);const dummy=new THREE.Object3D();
+  const crowns=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,1),new THREE.MeshStandardMaterial({name:'Plain trees | crowns',color:0xffffff,roughness:1}),broad.length*4);const dummy=new THREE.Object3D();
   trees.forEach((t,i)=>{const [x,y,z]=t.position;dummy.position.set(x,y+t.height*.3,z);dummy.scale.set(t.width*.18,t.height*.6,t.width*.18);dummy.rotation.set(0,0,0);dummy.updateMatrix();trunks.setMatrixAt(i,dummy.matrix);});
   broad.forEach((t,i)=>{const [x,y,z]=t.position;
     for(let j=0;j<4;j++){const a=j*2.4;dummy.position.set(x+Math.sin(a)*t.width*.17,y+t.height*(.6+(j%2)*.16),z+Math.cos(a)*t.width*.17);dummy.scale.set(t.width*.3,t.height*.29,t.width*.3);dummy.rotation.set(i*.15,j,0);dummy.updateMatrix();crowns.setMatrixAt(i*4+j,dummy.matrix);crowns.setColorAt(i*4+j,new THREE.Color().setHSL(.25+(i%5)*.012,.29,.18+(i%7)*.012));}
@@ -55,7 +81,7 @@ function plainTrees(trees: Tree[]) {
   group.add(trunks);if(broad.length)group.add(crowns);
   if(pines.length){
     // A Norfolk pine is a spire of level tiers, not a rounded crown.
-    const tiers=new THREE.InstancedMesh(new THREE.ConeGeometry(1,1,7),new THREE.MeshStandardMaterial({color:0xffffff,roughness:1}),pines.length*4);
+    const tiers=new THREE.InstancedMesh(new THREE.ConeGeometry(1,1,7),new THREE.MeshStandardMaterial({name:'Plain trees | pine tiers',color:0xffffff,roughness:1}),pines.length*4);
     pines.forEach((t,i)=>{const [x,y,z]=t.position;
       for(let j=0;j<4;j++){const r=t.width*.5*(1-.22*j);dummy.position.set(x,y+t.height*(.35+.18*j),z);dummy.scale.set(r,t.height*(.3-.02*j),r);dummy.rotation.set(0,i+j*1.3,0);dummy.updateMatrix();tiers.setMatrixAt(i*4+j,dummy.matrix);tiers.setColorAt(i*4+j,new THREE.Color().setHSL(.33,.3,.12+(i%5)*.01));}
     });group.add(tiers);
@@ -119,6 +145,9 @@ function leafyTrees(trees: Tree[], multisampled: boolean) {
     });
     leaves.name = `Leafy tree ${s} | leaves`;
     wood.name = `Leafy tree ${s} | trunk and limbs`;
+    // Trunks stand in the crowns' shade; the leaves are shaded by their own
+    // rounded normals instead, as the shadow casters are only rough crowns.
+    wood.receiveShadow = true;
     group.add(wood, leaves);
   });
   return {

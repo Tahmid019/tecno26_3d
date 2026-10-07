@@ -13,6 +13,8 @@ const EXPECTED: Record<string, number> = {
   '/assets/collision.glb': 2_150_000,
   '/assets/student.glb': 2_320_000,
   '/assets/trees.json': 65_000,
+  '/assets/npc.glb': 149_108,
+  '/assets/crowd.glb': 67_804,
   '/assets/library.glb': 1_210_704,
   '/assets/library-collision.glb': 169_200,
   '/assets/gallery.glb': 603_452,
@@ -27,7 +29,7 @@ const EXPECTED: Record<string, number> = {
 };
 
 export const STAGES: Record<Stage, string[]> = {
-  campus: ['/assets/campus.glb', '/assets/collision.glb', '/assets/student.glb', '/assets/trees.json'],
+  campus: ['/assets/campus.glb', '/assets/collision.glb', '/assets/student.glb', '/assets/trees.json', '/assets/npc.glb', '/assets/crowd.glb'],
   outer: ['/assets/library.glb', '/assets/library-collision.glb',
     '/assets/gallery.glb', '/assets/gallery-collision.glb',
     '/assets/library-trees.json', '/assets/gallery-trees.json',

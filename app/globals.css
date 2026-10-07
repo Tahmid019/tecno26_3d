@@ -93,6 +93,9 @@ kbd { font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .
 .performance { display: flex; align-items: center; gap: 6px; }
 .performance select { background: #142d28cc; border: 1px solid #ffffff33; color: #fff; border-radius: 8px; padding: 7px 8px; font-size: 12px; }
 .performance .square-button { height: 34px !important; width: 34px !important; min-width: 34px; }
+.location .speed { flex: none; font-style: normal; font-variant-numeric: tabular-nums; margin-left: 2px; padding-left: 8px; border-left: 1px solid #ffffff40; color: #dafa67; }
+.location span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clock { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-variant-numeric: tabular-nums; color: #e8f2ea; text-shadow: 0 1px 4px #000; min-width: 56px; }
 
 /* ---- desktop ---------------------------------------------------------- */
 @media (min-width: 860px) and (pointer: fine) {
@@ -113,8 +116,10 @@ kbd { font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .
   .brand div > span { display: none; }
   /* Thumbs own the bottom of a phone, so the map and settings stack top right. */
   .bottom-bar { top: 58px; right: 16px; left: auto; bottom: auto; transform: none; }
+  .bottom-bar .fps, .bottom-bar .clock { display: none; }
+  .performance select { padding: 7px 4px; max-width: 104px; }
   .minimap { top: 102px; right: 16px; left: auto; bottom: auto; transform: none; width: 92px; }
   .streaming { top: 202px; right: 16px; }
-  .location { top: 62px; }
+  .location { top: 104px; max-width: calc(100vw - 132px); }
 }
 @media (max-height: 560px) { .start-panel { bottom: 74px; padding: 16px 18px; } .start-panel h1 { font-size: 30px; margin: 6px 0 10px; } .minimap { display: none; } }

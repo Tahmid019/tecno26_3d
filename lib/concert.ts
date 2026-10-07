@@ -1,5 +1,6 @@
 import * as T from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import type { Spot, Role } from './audience.ts';
 
 // +X is west and +Z is north. Face the shared-road football entrance
 // at (-49.5, 170), with the stage centered on its sightline across the field.
@@ -54,11 +55,15 @@ export function createConcert() {
   // Crowd control rails have a clear central entrance and side access.
   for(const x of [-8,8]){rod([x-5,.98,9],[x+5,.98,9],.03,silver);rod([x-5,.3,9],[x+5,.3,9],.025,silver);for(let j=0;j<=20;j++)rod([x-5+j*.5,.08,9],[x-5+j*.5,.98,9],.02,silver);const guard=new T.Mesh(new T.BoxGeometry(10,.95,.08));guard.position.set(x,.5,9);colliders.add(guard);}
   for(const [material,geometries] of buckets){const flat=geometries.map(g=>g.index?g.toNonIndexed():g);const merged=mergeGeometries(flat,false);if(merged){const mesh=new T.Mesh(merged,material);mesh.name='Concert static structure';root.add(mesh);}for(const g of new Set([...geometries,...flat]))g.dispose();}
-  const crowd=createCrowd();root.add(crowd.group);
-  for(const p of crowd.positions){const o=new T.Mesh(new T.BoxGeometry(.48,1.65,.4));o.position.set(p.x,.84,p.z);colliders.add(o);}
-  const artists=createCrowd(true);root.add(artists.group);
-  let lastUpdate=-1;
-  return {root,colliders,crowdCount:crowd.positions.length,update(time:number){if(time-lastUpdate>.05){crowd.animate(time);artists.animate(time);lastUpdate=time;}for(let i=0;i<beams.length;i++){(beams[i].material as T.MeshBasicMaterial).opacity=.043+.017*(1+Math.sin(time*.7+i));beams[i].rotation.z=Math.sin(time*.35+i)*.11;}for(let i=0;i<lightDots.length;i++)lightDots[i].scale.setScalar(.88+.12*Math.sin(time*1.2+i));}};
+  const audience=audienceSpots(),band=bandSpots();
+  for(const p of audience){const o=new T.Mesh(new T.BoxGeometry(.48,1.65,.4));o.position.set(p.x,.84,p.z);colliders.add(o);}
+  // The lights on the front truss, for the stage wash at night (in the root's frame).
+  const washes=[-8,0,8].map(x=>new T.Vector3(x,7.4,5.2));
+  let night=0;
+  return {root,colliders,audience,band,washes,crowdCount:audience.length,
+    /** Beams show up against the dark; by day they are barely there. */
+    setNight(level:number){night=level;},
+    update(time:number){for(let i=0;i<beams.length;i++){(beams[i].material as T.MeshBasicMaterial).opacity=(.043+.017*(1+Math.sin(time*.7+i)))*(1+night*2.2);beams[i].rotation.z=Math.sin(time*.35+i)*.11;}for(let i=0;i<lightDots.length;i++)lightDots[i].scale.setScalar(.88+.12*Math.sin(time*1.2+i)+night*.5);}};
 }
 
 function signTexture(header:boolean){
@@ -71,20 +76,26 @@ function signTexture(header:boolean){
   const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;return texture;
 }
 
-function createCrowd(performers=false){
-  const group=new T.Group();group.name=performers?'Stage performers':'Animated dummy audience';
+/**
+ * Where the audience stands: packed near the barrier and thinning out towards
+ * the back, friends in little knots, a clear aisle down the middle.
+ */
+export function audienceSpots(count=120): Spot[] {
   let seed=21463;const random=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
-  const positions:{x:number;z:number;y:number;scale:number;phase:number;cheer:boolean}[]=[];
-  if(performers)for(const [x,z] of [[-5.8,1.5],[0,2.05],[5,1.3],[-4,-.6],[0,-2.3]])positions.push({x,z,y:1.1,scale:1,phase:random()*6,cheer:false});
-  else for(let row=0;row<12;row++)for(let col=0;col<10;col++){const side=col<5?-1:1;positions.push({x:side*(2.3+(col%5)*1.9)+(random()-.5)*.65,z:12+row*2.55+(random()-.5)*.8,y:0,scale:.91+random()*.15,phase:random()*6.28,cheer:random()>.63});}
-  const n=positions.length;const bodyMat=new T.MeshStandardMaterial({color:0xffffff,roughness:1});const skinMat=bodyMat.clone();
-  const torso=new T.InstancedMesh(new T.BoxGeometry(.43,.58,.25),bodyMat,n),heads=new T.InstancedMesh(new T.SphereGeometry(.143,8,6),skinMat,n),hair=new T.InstancedMesh(new T.SphereGeometry(.147,8,6,0,Math.PI*2,0,Math.PI*.58),new T.MeshStandardMaterial({color:'#201a19'}),n),legs=new T.InstancedMesh(new T.CylinderGeometry(.075,.065,1,6),bodyMat,n*2),arms=new T.InstancedMesh(new T.CylinderGeometry(.059,.052,1,6),bodyMat,n*2),hands=new T.InstancedMesh(new T.SphereGeometry(.064,6,5),skinMat,n*2),shoes=new T.InstancedMesh(new T.BoxGeometry(.15,.095,.27),new T.MeshStandardMaterial({color:'#25242b'}),n*2);
-  group.add(torso,heads,hair,legs,arms,hands,shoes);
-  const shirts=['#dfb74d','#2464a2','#752f55','#e5dfca','#384c37','#202a39','#9e4936','#377d7a'];const skins=['#ab7452','#d09d79','#855b43','#c28b65'];
-  const dummy=new T.Object3D(),a=new T.Vector3(),b=new T.Vector3(),delta=new T.Vector3(),up=new T.Vector3(0,1,0);
-  positions.forEach((p,i)=>{torso.setColorAt(i,new T.Color(shirts[i%shirts.length]));heads.setColorAt(i,new T.Color(skins[i%skins.length]));for(let k=0;k<2;k++){arms.setColorAt(i*2+k,new T.Color(shirts[i%shirts.length]));hands.setColorAt(i*2+k,new T.Color(skins[i%skins.length]));legs.setColorAt(i*2+k,new T.Color(i%3?'#26354a':'#655850'));}});
-  const pose=(mesh:T.InstancedMesh,i:number,p:typeof positions[number],x:number,y:number,z:number,sx=1,sy=1,sz=1)=>{dummy.position.set(p.x+x*p.scale,p.y+y*p.scale,p.z+z*p.scale);dummy.scale.set(sx*p.scale,sy*p.scale,sz*p.scale);dummy.rotation.set(0,0,0);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);};
-  const bone=(mesh:T.InstancedMesh,i:number,p:typeof positions[number],from:number[],to:number[])=>{a.set(...from as [number,number,number]);b.set(...to as [number,number,number]);delta.copy(b).sub(a);const length=delta.length();dummy.position.copy(a.add(b).multiplyScalar(.5)).multiplyScalar(p.scale).add(new T.Vector3(p.x,p.y,p.z));dummy.scale.set(p.scale,length*p.scale,p.scale);dummy.quaternion.setFromUnitVectors(up,delta.normalize());dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);};
-  const animate=(t:number)=>{positions.forEach((p,i)=>{const bob=Math.sin(t*2+p.phase)*.016;pose(torso,i,p,0,1.1+bob,0);pose(heads,i,p,0,1.55+bob,0);pose(hair,i,p,0,1.57+bob,0);for(let k=0;k<2;k++){const s=k?1:-1;bone(legs,i*2+k,p,[s*.115,.83,0],[s*.14,.15,-.015]);pose(shoes,i*2+k,p,s*.14,.07,-.055);const hy=p.cheer?1.83+Math.sin(t*1.8+p.phase+k)*.10:.86+bob;const hx=s*(p.cheer?.36:.29);bone(arms,i*2+k,p,[s*.23,1.34+bob,0],[hx,hy,-.055]);pose(hands,i*2+k,p,hx,hy,-.055);}});for(const mesh of [torso,heads,hair,legs,arms,hands,shoes]){mesh.instanceMatrix.needsUpdate=true;mesh.frustumCulled=false;}};
-  animate(0);return {group,positions,animate};
+  const spots:Spot[]=[];
+  for(let tries=0;spots.length<count&&tries<40000;tries++){
+    // Every fourth person comes with a friend or two close by.
+    const near=spots.length&&random()<.3?spots[Math.floor(random()*spots.length)]:null;
+    const x=near?near.x+(random()-.5)*1.8:(random()<.5?-1:1)*(1.7+random()*10);
+    const z=near?near.z+(random()-.5)*1.6:10.6+Math.pow(random(),1.7)*31;
+    if(Math.abs(x)<1.6||Math.abs(x)>12||z<10.4||z>42||spots.some(o=>Math.hypot(o.x-x,o.z-z)<.74))continue;
+    // The front few rows are the loudest.
+    spots.push({x,z,y:0,scale:.91+random()*.15,phase:random()*6.28,cheer:random()>(z<20?.45:.7)});
+  }
+  return spots;
+}
+/** The band on the deck: two guitars, the singer, keys and drums. */
+export function bandSpots(): { spot: Spot; role: Role }[] {
+  const at=(x:number,z:number,role:Role,phase:number)=>({spot:{x,z,y:1.1,scale:1,phase,cheer:false},role});
+  return [at(-5.8,1.5,'guitar',.4),at(0,2.05,'singer',1.7),at(5,1.3,'guitar',2.9),at(-4,-.75,'keys',3.6),at(0,-2.15,'drums',5.1)];
 }

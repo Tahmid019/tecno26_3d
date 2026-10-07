@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /** A small, once-baked daylight environment is enough for the library's glazing. */
-export function applyLibraryMaterials(root: THREE.Object3D, environment: THREE.Texture) {
+export function applyLibraryMaterials(root: THREE.Object3D, environment: THREE.Texture | null) {
   const materials = new Set<THREE.MeshStandardMaterial>();
   root.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
@@ -36,49 +36,6 @@ export function applyLibraryMaterials(root: THREE.Object3D, environment: THREE.T
     }
     material.needsUpdate = true;
   }
-}
-
-/** A daylight sky baked once for glazing and metal to reflect; the library and administration share it. */
-export function daylightEnvironment(renderer: THREE.WebGLRenderer) {
-  const capture = new THREE.Scene();
-  const geometry = new THREE.SphereGeometry(80, 24, 12);
-  const position = geometry.getAttribute('position');
-  const colors = new Float32Array(position.count * 3);
-  const horizon = new THREE.Color('#d4e3e7');
-  const zenith = new THREE.Color('#5d9bc7');
-  const ground = new THREE.Color('#555d47');
-  const color = new THREE.Color();
-  for (let i = 0; i < position.count; i++) {
-    const height = position.getY(i) / 80;
-    if (height >= 0) color.copy(horizon).lerp(zenith, Math.pow(height, .6));
-    else color.copy(horizon).lerp(ground, Math.min(1, -height * 8));
-    color.toArray(colors, i * 3);
-  }
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  capture.add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
-
-  // Broad cloud shapes leave soft, recognisable highlights across each pane.
-  // They are captured only once; there are no extra draw calls in the game.
-  const cloudGeometry = new THREE.SphereGeometry(1, 10, 6);
-  const cloudMaterial = new THREE.MeshBasicMaterial({ color: '#eef4ef' });
-  for (let i = 0; i < 12; i++) {
-    const angle = i * 2.39996;
-    for (let j = 0; j < 3; j++) {
-      const cloud = new THREE.Mesh(cloudGeometry, cloudMaterial);
-      cloud.position.set(Math.cos(angle) * 42 + (j - 1) * 5, 15 + (i % 4) * 5 + (j % 2) * 2, Math.sin(angle) * 42);
-      cloud.scale.set(7, 2.2 + (j % 2), 4.5);
-      capture.add(cloud);
-    }
-  }
-  const generator = new THREE.PMREMGenerator(renderer);
-  const target = generator.fromScene(capture, .04, .1, 100, { size: 128 });
-  generator.dispose();
-  geometry.dispose();
-  (capture.children[0] as THREE.Mesh).material instanceof THREE.Material &&
-    ((capture.children[0] as THREE.Mesh).material as THREE.Material).dispose();
-  cloudGeometry.dispose();
-  cloudMaterial.dispose();
-  return target;
 }
 
 function addMineralVariation(material: THREE.MeshStandardMaterial, masonry: boolean) {
