@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+@import 'tailwindcss/index.css';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @theme inline { --color-background: #142923; --color-foreground: #fff; --color-primary: #dafa67; --color-primary-foreground: #18332d; --color-ring: #dafa67; --font-sans: 'Segoe UI', Arial, sans-serif; }
