@@ -22,7 +22,7 @@ export default function Campus() {
   const mount = useRef<HTMLDivElement>(null);
   const game = useRef<Game | null>(null);
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState<GameState>({ ready: false, playing: false, progress: 'Preparing campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 70, motion: 'Idle', percent: 0, outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false });
+  const [state, setState] = useState<GameState>({ ready: true, playing: true, progress: 'Preparing campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 70, motion: 'Idle', percent: 0, outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false });
   useEffect(() => {
     let disposed = false; let unregister = () => {};
     import('@/lib/game').then(async ({ createGame }) => {
