@@ -1,4 +1,5 @@
 import vinext from "vinext";
+import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -11,5 +12,5 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: true,
   },
-  plugins: [vinext()],
+  plugins: [vinext(), nitro()],
 });
