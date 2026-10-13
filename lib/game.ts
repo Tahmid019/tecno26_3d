@@ -66,7 +66,6 @@ export type Game = {
 };
 
 
-
 type TreeFile = {trees:Tree[];roads:number[][][]};
 
 // The character ships with Walk, Run and Idle and nothing else, so leaving the
@@ -361,9 +360,29 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     const visibility=()=>{if(document.hidden)blur();};
     // Touch never reports movementX, so the drag delta is measured by hand.
     const touches=new Map<number,{x:number;y:number}>();let pinch=0;
-    const pointerDown=(e:PointerEvent)=>{if(!state.playing)return;touches.set(e.pointerId,{x:e.clientX,y:e.clientY});drag=true;renderer.domElement.setPointerCapture(e.pointerId);};
+
+    const mouseDown = () => {
+      if (window.matchMedia("(pointer: fine)").matches &&
+          document.pointerLockElement !== canvas) {
+        void canvas.requestPointerLock();
+      }
+    };
+
+    const mouseMove = (e: MouseEvent) => {
+      if (document.pointerLockElement !== canvas || !state.playing) return;
+      yaw -= e.movementX * 0.005;
+      pitch = THREE.MathUtils.clamp(pitch + e.movementY * 0.004, -0.95, 1.08);
+    };
+    const pointerDown=(e:PointerEvent)=>{
+      if(!state.playing)return;
+      if (e.pointerType === "mouse" || !state.playing) return;
+      touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      drag=true;
+      renderer.domElement.setPointerCapture(e.pointerId);
+    };
     const pointerUp=(e:PointerEvent)=>{touches.delete(e.pointerId);if(!touches.size){drag=false;pinch=0;}};
     const pointerMove=(e:PointerEvent)=>{
+      if (e.pointerType === "mouse") return;
       const last=touches.get(e.pointerId);if(!last||!state.playing)return;
       const dx=e.clientX-last.x,dy=e.clientY-last.y;
       touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
@@ -378,7 +397,15 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     const wheel=(e:WheelEvent)=>{if(state.playing){e.preventDefault();distance=THREE.MathUtils.clamp(distance+e.deltaY*.006,2.5,14);}};
     const lost=()=>{state.error='The 3D display was interrupted. Reload the campus to restore it.';setPlaying(false);};
     window.addEventListener('keydown',down);window.addEventListener('keyup',up);window.addEventListener('blur',blur);document.addEventListener('visibilitychange',visibility);
-    const canvas=renderer.domElement;canvas.addEventListener('pointerdown',pointerDown);canvas.addEventListener('pointerup',pointerUp);canvas.addEventListener('pointercancel',pointerUp);canvas.addEventListener('pointermove',pointerMove);canvas.addEventListener('wheel',wheel,{passive:false});canvas.addEventListener('webglcontextlost',lost);
+    const canvas=renderer.domElement;
+    canvas.addEventListener("click", mouseDown);
+    document.addEventListener("mousemove", mouseMove);
+    canvas.addEventListener('pointerdown',pointerDown);
+    canvas.addEventListener('pointerup',pointerUp);
+    canvas.addEventListener('pointercancel',pointerUp);
+    canvas.addEventListener('pointermove',pointerMove);
+    canvas.addEventListener('wheel',wheel,{passive:false});
+    canvas.addEventListener('webglcontextlost',lost);
 
     // The library and the lecture gallery arrive while the campus is already
     // being walked, then the walkable tree is rebuilt to take them in.
@@ -579,6 +606,12 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
         window.removeEventListener('blur', blur);
         document.removeEventListener('visibilitychange', visibility);
 
+        canvas.removeEventListener("click", mouseDown);
+        document.removeEventListener("mousemove", mouseMove);
+
+        if (document.pointerLockElement === canvas) {
+          document.exitPointerLock();
+        }
         canvas.removeEventListener('pointerdown', pointerDown);
         canvas.removeEventListener('pointerup', pointerUp);
         canvas.removeEventListener('pointercancel', pointerUp);
@@ -612,3 +645,5 @@ function addSurfaceGrain(material:THREE.MeshStandardMaterial){
     shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\nfloat grain=noiseGrain(vWorldGrain.xz*.18)*.7+noiseGrain(vWorldGrain.xz*8.0)*.3;diffuseColor.rgb *= .80 + grain*.35;');
   };material.customProgramCacheKey=()=> 'campus-grain-v1';
 }
+
+
