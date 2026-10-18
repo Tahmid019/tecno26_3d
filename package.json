@@ -1,17 +1,14 @@
 {
-  "name": "sites-project",
+  "name": "Tecnoesis 2027",
   "version": "0.1.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
-    "build": "node --import ./scripts/graceful-build-exit.mjs ./node_modules/vinext/dist/cli.js build",
-    "start": "node scripts/serve.mjs",
-    "test": "node --experimental-transform-types --test tests/physics.test.ts tests/concert.test.ts tests/library.test.ts tests/grass.test.ts tests/camera.test.ts tests/admin.test.ts tests/riding.test.ts tests/campus-life.test.ts",
-    "lint": "oxlint",
-    "format": "oxfmt"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
