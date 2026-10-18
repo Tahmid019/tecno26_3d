@@ -1,13 +1,26 @@
-@import 'tailwindcss';
+@import 'tailwindcss/index.css';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@theme inline { --color-background: #142923; --color-foreground: #fff; --color-primary: #dafa67; --color-primary-foreground: #18332d; --color-ring: #dafa67; --font-sans: 'Segoe UI', Arial, sans-serif; }
+
+@font-face {
+  font-family: 'Orbitron';
+  src: url('/fonts/Orbitron-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme inline { --color-background: #142923; --color-foreground: #fff; --color-primary: #edebf3; --color-primary-foreground: #18332d; --color-ring: #edebf3; --font-sans: 'Segoe UI', Arial, sans-serif; }
+@theme {
+  --font-orbitron: 'Orbitron', sans-serif;
+}
 :root { color-scheme: dark; font-family: 'Segoe UI', Arial, sans-serif; font-size: 16px; background: #142923; color: #fff; }
 * { box-sizing: border-box; }
 body { margin: 0; overscroll-behavior: none; }
 button { cursor: pointer; font: inherit; }
 button:disabled { cursor: default; opacity: .45; }
-button:focus-visible, select:focus-visible { outline: 3px solid #dafa67; outline-offset: 3px; }
+button:focus-visible, select:focus-visible { outline: 3px solid #edebf3; outline-offset: 3px; }
+h2 {font-family: 'Orbitron', sans-serif;}
 
 .campus-app { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: #142923 url('/assets/campus-cover.jpg') center/cover; touch-action: none; }
 .scene, .scene canvas, .vignette { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -19,7 +32,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid #dafa67; outline
 .topbar { left: 16px; right: 16px; top: 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .brand { display: flex; align-items: center; gap: 10px; text-shadow: 0 1px 12px #0007; }
 .brand-symbol { width: 34px; height: 34px; border: 1px solid #ffffff85; display: grid; place-items: center; font-size: 23px; font-weight: 700; position: relative; flex: none; }
-.brand-symbol span { position: absolute; right: -5px; top: -8px; font-size: 15px; color: #dafa67; background: #264438; padding: 0 3px; }
+.brand-symbol span { position: absolute; right: -5px; top: -8px; font-size: 15px; color: #edebf3; background: #264438; padding: 0 3px; }
 .brand strong { display: block; font-size: 13px; letter-spacing: 1.8px; }
 .brand div > span { display: block; font-size: 9px; letter-spacing: 2px; opacity: .7; margin-top: 3px; }
 .top-actions { display: flex; align-items: flex-start; gap: 8px; }
@@ -33,28 +46,27 @@ button:focus-visible, select:focus-visible { outline: 3px solid #dafa67; outline
 .places-menu { position: absolute; right: 0; top: 44px; width: 208px; padding: 6px; display: flex; flex-direction: column; background: #0f2b28f2; border: 1px solid #ffffff24; border-radius: 12px; backdrop-filter: blur(14px); box-shadow: 0 16px 40px #00000055; }
 .places-menu button { display: flex; align-items: center; gap: 8px; width: 100%; height: 40px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #edf3ee; font-size: 14px; text-align: left; }
 .places-menu button > svg:last-child { margin-left: auto; opacity: .5; }
-.places-menu button em { margin-left: auto; font-style: normal; font-size: 11px; color: #dafa67; }
+.places-menu button em { margin-left: auto; font-style: normal; font-size: 11px; color: #edebf3; }
 .places-menu button:hover:not(:disabled) { background: #ffffff14; }
-.places-menu .overview { margin-top: 4px; border-top: 1px solid #ffffff20; border-radius: 0 0 8px 8px; color: #dafa67; }
+.places-menu .overview { margin-top: 4px; border-top: 1px solid #ffffff20; border-radius: 0 0 8px 8px; color: #edebf3; }
 
-.location { top: 62px; left: 16px; display: flex; gap: 6px; align-items: center; font-size: 12px; border-left: 2px solid #dafa67; padding-left: 9px; text-shadow: 0 1px 6px #000; }
+.location { top: 62px; left: 16px; display: flex; gap: 6px; align-items: center; font-size: 12px; border-left: 2px solid #edebf3; padding-left: 9px; text-shadow: 0 1px 6px #000; }
 .streaming { top: 62px; right: 16px; font-size: 11px; letter-spacing: .6px; padding: 5px 10px; border-radius: 999px; background: #0f2b28cc; border: 1px solid #ffffff22; color: #cfe0d3; }
 
 /* ---- start panel ------------------------------------------------------ */
-.start-panel { left: 16px; right: 16px; bottom: 84px; max-width: 460px; padding: 22px; background: linear-gradient(135deg, #102e2cf2, #16382de6); border: 1px solid #ffffff23; backdrop-filter: blur(14px); border-radius: 3px 20px 20px 20px; }
-.eyebrow { font-size: 11px; letter-spacing: 2px; font-weight: 600; color: #dafa67; }
+.start-panel { left: 16px;  right: 16px; bottom: 84px; max-width: 460px; padding: 22px; background: linear-gradient(135deg, #102e2cf2, #16382de6, 1); border: 1px solid #ffffff23; backdrop-filter: blur(14px); border-radius: 3px 20px 20px 20px; }
 .start-panel h1 { font-weight: 500; font-size: clamp(2.2rem, 9vw, 3.4rem); line-height: 1.03; letter-spacing: -2px; margin: 10px 0 14px; }
-.control-guide { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 18px; color: #cddad4; font-size: 13px; }
+.control-guide { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 18px; color: #cddad4; font-size: 13px;  }
 .control-guide > span { display: flex; align-items: center; gap: 6px; }
 kbd { font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .5px; border: 1px solid #ffffff42; padding: 3px 5px; border-radius: 4px; color: #fff; background: #ffffff0d; }
-.play-button { display: flex !important; align-items: center !important; justify-content: flex-start !important; gap: 12px !important; width: 100%; height: 52px !important; background: #dafa67 !important; color: #18332d !important; border-radius: 9px !important; padding: 0 18px !important; font-size: 16px !important; font-weight: 650 !important; }
+.play-button { display: flex !important; align-items: center !important; justify-content: flex-start !important; gap: 12px !important; width: 100%; height: 52px !important; background: #edebf3 !important; color: #18332d !important; border-radius: 9px !important; padding: 0 18px !important; font-size: 16px !important; font-weight: 650 !important; }
 .play-button .arrow { margin-left: auto; }
 .error-message { line-height: 1.5; color: #ffd7c7; font-size: 13px; }
 .error-message button { margin-top: 14px; }
 .loading { display: flex; flex-direction: column; gap: 9px; }
 .loading-track { height: 6px; border-radius: 999px; background: #ffffff1f; overflow: hidden; }
-.loading-track i { display: block; height: 100%; background: #dafa67; border-radius: 999px; transition: width .2s ease-out; }
-.loading span { font-size: 13px; color: #c9dbcd; }
+.loading-track i { display: block; height: 100%; background: #84e2b0; border-radius: 999px; transition: width .2s ease-out; }
+.loading span { font-size: 13px; color: #2739d820; }
 
 /* ---- on-screen controls ---------------------------------------------- */
 .pad { left: 20px; right: 20px; bottom: 26px; display: flex; align-items: flex-end; justify-content: space-between; pointer-events: none; }
@@ -67,10 +79,10 @@ kbd { font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .
   border-radius: 50%; display: grid; place-items: center; color: #eaf3ec; pointer-events: auto;
   background: #0e2b27a8; border: 2px solid #ffffff3d; backdrop-filter: blur(6px);
   opacity: .62; transition: opacity .15s, background .15s; }
-.stick.armed .stick-lock, .stick.locked .stick-lock { opacity: 1; background: #dafa67; color: #18332d; border-color: #dafa67; }
+.stick.armed .stick-lock, .stick.locked .stick-lock { opacity: 1; background: #edebf3; color: #18332d; border-color: #edebf3; }
 /* A held sprint keeps pulsing, so it is never on without you noticing. */
 .stick.locked .stick-lock { animation: sprint-lock 1.5s ease-in-out infinite; }
-@keyframes sprint-lock { 0%, 100% { box-shadow: 0 0 0 0 #dafa6700; } 50% { box-shadow: 0 0 0 8px #dafa6733; } }
+@keyframes sprint-lock { 0%, 100% { box-shadow: 0 0 0 0 #edebf300; } 50% { box-shadow: 0 0 0 8px #edebf333; } }
 .stick-knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px;
   border-radius: 50%; background: #e9f6ec2e; border: 2px solid #ffffff8c; box-shadow: 0 4px 14px #0004;
   transition: transform .06s linear; }
@@ -79,10 +91,10 @@ kbd { font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .
   border-radius: 50% !important; background: #143c34a8 !important; border: 2px solid #ffffff45 !important;
   color: #fff !important; touch-action: none; backdrop-filter: blur(6px); }
 .round.jump { width: 76px !important; height: 76px !important; min-width: 76px; }
-.round.on { background: #dafa67 !important; color: #18332d !important; border-color: #dafa67 !important; }
+.round.on { background: #edebf3 !important; color: #18332d !important; border-color: #edebf3 !important; }
 /* A locked sprint keeps pulsing, so it is never on without you noticing. */
 .round.sprint.on { animation: sprint-lock 1.5s ease-in-out infinite; }
-@keyframes sprint-lock { 0%, 100% { box-shadow: 0 0 0 0 #dafa6700; } 50% { box-shadow: 0 0 0 7px #dafa6733; } }
+@keyframes sprint-lock { 0%, 100% { box-shadow: 0 0 0 0 #edebf300; } 50% { box-shadow: 0 0 0 7px #edebf333; } }
 
 .minimap { bottom: 96px; left: 50%; transform: translateX(-50%); width: 104px; border: 1px solid #ffffff25; border-radius: 10px; overflow: hidden; background: #122e28cc; }
 .minimap svg { display: block; width: 100%; height: auto; }
@@ -93,9 +105,6 @@ kbd { font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .
 .performance { display: flex; align-items: center; gap: 6px; }
 .performance select { background: #142d28cc; border: 1px solid #ffffff33; color: #fff; border-radius: 8px; padding: 7px 8px; font-size: 12px; }
 .performance .square-button { height: 34px !important; width: 34px !important; min-width: 34px; }
-.location .speed { flex: none; font-style: normal; font-variant-numeric: tabular-nums; margin-left: 2px; padding-left: 8px; border-left: 1px solid #ffffff40; color: #dafa67; }
-.location span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.clock { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-variant-numeric: tabular-nums; color: #e8f2ea; text-shadow: 0 1px 4px #000; min-width: 56px; }
 
 /* ---- desktop ---------------------------------------------------------- */
 @media (min-width: 860px) and (pointer: fine) {
@@ -116,10 +125,8 @@ kbd { font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .
   .brand div > span { display: none; }
   /* Thumbs own the bottom of a phone, so the map and settings stack top right. */
   .bottom-bar { top: 58px; right: 16px; left: auto; bottom: auto; transform: none; }
-  .bottom-bar .fps, .bottom-bar .clock { display: none; }
-  .performance select { padding: 7px 4px; max-width: 104px; }
   .minimap { top: 102px; right: 16px; left: auto; bottom: auto; transform: none; width: 92px; }
   .streaming { top: 202px; right: 16px; }
-  .location { top: 104px; max-width: calc(100vw - 132px); }
+  .location { top: 62px; }
 }
 @media (max-height: 560px) { .start-panel { bottom: 74px; padding: 16px 18px; } .start-panel h1 { font-size: 30px; margin: 6px 0 10px; } .minimap { display: none; } }
