@@ -25,6 +25,19 @@ import { createSurfaces } from './surfaces';
 import { createStreetLights } from './streetlights';
 import { pushOut, type Post } from './obstacles';
 
+// ===========
+import {
+  joinCampus,
+  sendPlayerMovement,
+  leaveCampus,
+} from "./multiplayer";
+
+import {
+  createRemotePlayers,
+  type RemotePlayers,
+} from "./remote-player";
+// ===============
+
 export const LANDMARKS = {
   gym: { label:'Sports complex', x:-20, z:67, yaw:0 },
   football: { label:'Football ground', x:12, z:135, yaw:Math.PI },
@@ -38,7 +51,23 @@ export const LANDMARKS = {
 export type Landmark = keyof typeof LANDMARKS;
 export type Quality = 'performance' | 'balanced' | 'high';
 export type GameState = { ready:boolean; playing:boolean; progress:string; error:string; fps:number; location:string; x:number; z:number; motion:string; percent:number; outerPercent:number; outerReady:boolean; runLock:boolean; riding:boolean; canMount:boolean; y?:number; grounded?:boolean; overview?:boolean; quality?:Quality; draws?:number; triangles?:number; animationTime?:number; crowdCount?:number; sound?:boolean; time?:string; timeMode?:TimeName; speed?:number };
-export type Game = { setPlaying:(value:boolean)=>void; reset:()=>void; dispose:()=>void; travel:(id:Landmark)=>void; overview:()=>void; setQuality:(q:Quality)=>void; input:(key:string,pressed:boolean)=>void; move:(x:number,y:number)=>void; toggleRun:()=>void; toggleRide:()=>void; setSound:(on:boolean)=>void; bell:()=>void; setTime:(mode:TimeName)=>void; getState:()=>GameState };
+export type Game = { setPlaying:(value:boolean)=>void; reset:()=>void; dispose:()=>void; travel:(id:Landmark)=>void; overview:()=>void; setQuality:(q:Quality)=>void; input:(key:string,pressed:boolean)=>void; move:(x:number,y:number)=>void; toggleRun:()=>void; toggleRide:()=>void; setSound:(on:boolean)=>void; bell:()=>void; setTime:(mode:TimeName)=>void; getState:()=>GameState; getMultiplayerSnapshot: () => MultiplayerSnapshot; };
+
+
+// =========
+export type MultiplayerSnapshot = {
+  x: number;
+  y: number;
+  z: number;
+  qx: number;
+  qy: number;
+  qz: number;
+  qw: number;
+  animation: string;
+};
+//=============
+
+
 type TreeFile = {trees:Tree[];roads:number[][][]};
 /** Ground speed of the Walk and Run clips, measured from the planted foot. Playing
  * them at these speeds keeps the shoes from skating over the ground. */
@@ -234,6 +263,26 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     };
     rack(-22.4,69.3,.7,3);
     const rider=createRider(student.scene);
+
+    // ======================
+    let remotePlayers: RemotePlayers | null = null;
+    let multiplayerRoom: Awaited<ReturnType<typeof joinCampus>> | null = null;
+    let syncElapsed = 0;
+
+    try {
+      multiplayerRoom = await joinCampus();
+
+      remotePlayers = createRemotePlayers(
+        scene,
+        multiplayerRoom,
+        student.scene,
+        student.animations,
+        fleet,
+      );
+    } catch (error) {
+      console.error("[Multiplayer] Initialization failed:", error);
+    }
+    //========================
 
     // Other students: walkers on the road verges, groups outside the buildings
     // and cyclists keeping left, all drawn from a lighter copy of the student.
@@ -865,6 +914,30 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
       grass.update(elapsed,avatar.position,physics.grounded,!!state.overview);
       for(const s of stands)s.update(eventTime);
       renderer.render(scene,camera);acc+=elapsed;frames++;
+
+      // =================
+      remotePlayers?.update(elapsed);
+
+      if (multiplayerRoom) {
+        syncElapsed += elapsed;
+
+        if (syncElapsed >= 1 / 30) {
+          syncElapsed = 0;
+
+          sendPlayerMovement({
+            x: avatar.position.x,
+            y: avatar.position.y,
+            z: avatar.position.z,
+            qx: avatar.quaternion.x,
+            qy: avatar.quaternion.y,
+            qz: avatar.quaternion.z,
+            qw: avatar.quaternion.w,
+            animation: state.riding ? "Ride" : state.motion,
+          });
+        }
+      }
+      // ==================
+
       if(acc>.35){state.fps=Math.round(frames/acc);state.speed=state.riding?Math.round(Math.hypot(physics.velocity.x,physics.velocity.z)*3.6):0;state.time=clockLabel(hours);state.x=avatar.position.x;state.y=avatar.position.y;state.z=avatar.position.z;state.grounded=physics.grounded;state.draws=renderer.info.render.calls;state.triangles=renderer.info.render.triangles;state.animationTime=action.time;
         const near=!state.riding&&!!fleet.nearest(avatar.position,MOUNT_RANGE);
         if(near!==state.canMount)state.canMount=near;
@@ -873,6 +946,24 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     }
     state.ready=true;state.progress='Ready';state.percent=100;publish();frame=requestAnimationFrame(animate);
     void streamOuter().catch(e=>{state.progress=`The outlying buildings could not be loaded: ${e.message||e}`;publish();});
-    return {setPlaying,reset,travel,overview,setQuality,input,move,toggleRun,toggleRide,setSound,bell,setTime,getState:()=>({...state}),dispose(){disposed=true;audio.dispose();cancelAnimationFrame(frame);window.removeEventListener('keydown',down);window.removeEventListener('keyup',up);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',pointerUp);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('webglcontextlost',lost);mixer.stopAllAction();world.clear();treeWorld.clear();solids.clear();grass.dispose();crowd.dispose();audience.dispose();fleet.dispose();streetLights.dispose();sky.dispose();for(const s of stands)s.dispose();draco.dispose();cleanupResources();}};
+    return {setPlaying,reset,travel,overview,setQuality,input,move,toggleRun,toggleRide,setSound,bell,setTime,getState:()=>({...state}),
+      
+      //=============
+      getMultiplayerSnapshot: () => ({
+        x: avatar.position.x,
+        y: avatar.position.y,
+        z: avatar.position.z,
+        qx: avatar.quaternion.x,
+        qy: avatar.quaternion.y,
+        qz: avatar.quaternion.z,
+        qw: avatar.quaternion.w,
+        animation: state.riding ? "Ride" : state.motion,
+      }),
+      // =============
+      
+      dispose(){disposed=true;audio.dispose();cancelAnimationFrame(frame);window.removeEventListener('keydown',down);window.removeEventListener('keyup',up);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',pointerUp);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('webglcontextlost',lost);mixer.stopAllAction();
+        (remotePlayers as RemotePlayers | null)?.dispose();
+        void leaveCampus();
+        world.clear();treeWorld.clear();solids.clear();grass.dispose();crowd.dispose();audience.dispose();fleet.dispose();streetLights.dispose();sky.dispose();for(const s of stands)s.dispose();draco.dispose();cleanupResources();}};
   } catch(error){cleanupResources();throw error;}
 }

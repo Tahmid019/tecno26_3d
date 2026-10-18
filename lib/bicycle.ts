@@ -21,6 +21,13 @@ export const BICYCLE_SPRINT = 12;
 /** How close the student has to be, in metres, before one can be picked up. */
 export const MOUNT_RANGE = 3;
 
+export type RiderFit = {
+  crank: { y: number; z: number };
+  crankRadius: number;
+  bar: { x: number; y: number; z: number };
+  saddle: { y: number; z: number };
+};
+
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const STEER_DIR = V(0, Math.sin(THREE.MathUtils.degToRad(70)), -Math.cos(THREE.MathUtils.degToRad(70)));
 export const BIKE = {
@@ -363,3 +370,126 @@ export function createFleet(capacity: number) {
   };
 }
 export type Fleet = ReturnType<typeof createFleet>;
+
+
+export function createBicycle(fit: RiderFit) {
+  const group = new THREE.Group();
+  group.name = "Remote bicycle";
+
+  const paint = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.36,
+    metalness: 0.3,
+    side: THREE.DoubleSide,
+  });
+
+  const fittings = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.5,
+    metalness: 0.35,
+  });
+
+  const frame = frameGeometry(false);
+  const steering = steerGeometry(false);
+
+  const addMesh = (
+    geometry: THREE.BufferGeometry,
+    material: THREE.Material,
+    parent: THREE.Object3D = group,
+  ) => {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.castShadow = true;
+    mesh.frustumCulled = false;
+    parent.add(mesh);
+    return mesh;
+  };
+
+  addMesh(frame.paint, paint);
+  addMesh(frame.fit, fittings);
+
+  const steerGroup = new THREE.Group();
+  const pivot = BIKE.steerPivot.clone();
+  steerGroup.position.copy(pivot);
+
+  steering.paint.translate(-pivot.x, -pivot.y, -pivot.z);
+  steering.fit.translate(-pivot.x, -pivot.y, -pivot.z);
+
+  addMesh(steering.paint, paint, steerGroup);
+  addMesh(steering.fit, fittings, steerGroup);
+  group.add(steerGroup);
+
+  const wheelGeo = wheelGeometry();
+  const rearWheel = addMesh(wheelGeo.clone(), fittings);
+  const frontWheel = addMesh(wheelGeo.clone(), fittings);
+
+  rearWheel.position.copy(BIKE.rearAxle);
+  frontWheel.position.copy(BIKE.frontAxle);
+
+  const crankGroup = new THREE.Group();
+  crankGroup.position.set(0, fit.crank.y, fit.crank.z);
+  addMesh(crankGeometry(), fittings, crankGroup);
+  group.add(crankGroup);
+
+  const pedalGeo = pedalGeometry();
+  const pedals = [
+    addMesh(pedalGeo.clone(), fittings),
+    addMesh(pedalGeo.clone(), fittings),
+  ];
+
+  const wheelCircumference = 2 * Math.PI * BIKE.wheelRadius;
+  let wheelAngle = 0;
+  let crankAngle = 0;
+
+  const setCranks = (angle: number) => {
+    crankAngle = angle;
+    crankGroup.rotation.x = angle;
+
+    const radius = fit.crankRadius || BIKE.crank;
+
+    pedals.forEach((pedal, i) => {
+      const side = i === 0 ? -1 : 1;
+      const phase = angle + (i === 0 ? 0 : Math.PI);
+
+      pedal.position.set(
+        side * BIKE.pedalX,
+        fit.crank.y + radius * Math.cos(phase),
+        fit.crank.z + radius * Math.sin(phase),
+      );
+    });
+  };
+
+  setCranks(0);
+
+  return {
+    group,
+    bars: steerGroup,
+    pedals,
+    lean: 0,
+
+    update(delta: number, speed: number, steer: number) {
+      wheelAngle += speed * delta / wheelCircumference * Math.PI * 2;
+
+      rearWheel.rotation.x = wheelAngle;
+      frontWheel.rotation.x = wheelAngle;
+      steerGroup.rotation.y = steer;
+
+      setCranks(crankAngle + speed * delta / wheelCircumference
+        * Math.PI * 2 * BIKE.wheelRadius / BIKE.development);
+    },
+
+    setCranks,
+
+    dispose() {
+      group.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+        }
+      });
+
+      paint.dispose();
+      fittings.dispose();
+      group.removeFromParent();
+    },
+  };
+}
+
