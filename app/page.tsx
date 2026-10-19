@@ -77,6 +77,19 @@ export default function Campus() {
   // 5. Main 3D scene and header
   return <main className="campus-app">
     <div className="scene" ref={mount} aria-label="Interactive 3D NIT Silchar campus" />
+
+    // xyz
+    <div style={{
+      position: 'absolute', top: 12, left: '50%',
+      transform: 'translateX(-50%)', zIndex: 100,
+      background: '#000b', color: '#7CFC98',
+      padding: '8px 12px', borderRadius: 6,
+      fontFamily: 'monospace', fontSize: 13,
+      pointerEvents: 'none', whiteSpace: 'nowrap'
+    }}>
+      X: {state.x.toFixed(2)} | Y: {(state.y ?? 0).toFixed(2)} | Z: {state.z.toFixed(2)}
+    </div>
+    
     <div className="vignette" />
 
     <header className="hud topbar">
@@ -127,9 +140,15 @@ export default function Campus() {
               <Play size={17} fill="currentColor" /> Enter campus <ArrowUpRight className="arrow" />
             </Button>
           : <div className="loading">
-              <div className="loading-track"><i style={{ width: `${state.percent}%` }} /></div>
-              <span>{state.progress} · {state.percent}%</span>
-            </div>}
+              <div className="loading">
+                <div className="loading-track">
+                  <i style={{ width: `${state.percent}%` }} />
+                </div>
+                {/* <span>{state.progress} · {state.percent}%</span> */}
+                <small>Preparing campus assets · Please wait</small>
+              </div>
+            </div>      
+            }
     </section>}
 
     {/* 7. Streaming status and minimap */}

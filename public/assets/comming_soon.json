@@ -1,0 +1,20 @@
+
+{
+  "objects": [
+    {
+      "position": [-66, 10, 363],
+      "rotation": 3.14,
+      "scale": 10
+    },
+    {
+      "position": [-278.15, 10, 326.89],
+      "rotation": 3.14,
+      "scale": 10
+    },
+    {
+      "position": [-490, 10, 220],
+      "rotation": 0,
+      "scale": 10
+    }
+  ]
+}

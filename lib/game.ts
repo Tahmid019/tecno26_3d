@@ -24,6 +24,7 @@ import { createTreeStand, type Tree } from './trees';
 import { createSurfaces } from './surfaces';
 import { createStreetLights } from './streetlights';
 import { pushOut, type Post } from './obstacles';
+import { createComingSoon } from './comming_soon';
 
 // ===========
 import {
@@ -147,6 +148,14 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
         state.percent=campusPercent;state.outerPercent=outerPercent;publish();
       }
     });
+
+    const comingSoon = await createComingSoon(
+      loader,
+      '/assets/comming_soon.glb',
+      '/assets/comming_soon.json'
+    );
+
+    scene.add(comingSoon.group);
 
     // Everything needed to stand on the ground and walk comes first; the
     // library follows in the background while the campus is already playable.
@@ -944,6 +953,9 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
         state.location=Math.hypot(avatar.position.x-ADMIN.x,avatar.position.z-ADMIN.z)<115*ADMIN.scale?'Administration building':distanceToRoads(avatar.position.x,avatar.position.z,[ADMIN_ROAD])<15?'NIT Road · Administration':avatar.position.x<-450&&avatar.position.z>245?'Lecture gallery':avatar.position.x<-320?'APJ Abdul Kalam Library':onLibraryConnection(avatar.position.x,avatar.position.z,12)?'Road to the library':Math.abs(avatar.position.z-CONCERT.z)<18&&avatar.position.x>CONCERT.x-65&&avatar.position.x<CONCERT.x+8?'TECNOESIS concert':avatar.position.z<90?'Sports complex':avatar.position.x < -82?'Cricket ground':avatar.position.z>237?'Basketball courts':avatar.position.x<-35?'Between the grounds':'Football ground';
         publish();acc=0;frames=0;}
     }
+    state.x = avatar.position.x;
+    state.y = avatar.position.y;
+    state.z = avatar.position.z;
     state.ready=true;state.progress='Ready';state.percent=100;publish();frame=requestAnimationFrame(animate);
     void streamOuter().catch(e=>{state.progress=`The outlying buildings could not be loaded: ${e.message||e}`;publish();});
     return {setPlaying,reset,travel,overview,setQuality,input,move,toggleRun,toggleRide,setSound,bell,setTime,getState:()=>({...state}),
