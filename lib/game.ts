@@ -95,7 +95,7 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
   const mobile=matchMedia('(pointer:coarse)').matches;
   const renderer=new THREE.WebGLRenderer({antialias:!mobile,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,mobile?1.4:1.25));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1;
-  host.appendChild(renderer.domElement);renderer.domElement.tabIndex=0;renderer.domElement.setAttribute('aria-label','Campus: drag to look, on-screen pad to move');
+  const canvas=renderer.domElement;host.appendChild(canvas);canvas.tabIndex=0;canvas.setAttribute('aria-label','Campus: click or drag to look, on-screen pad to move');
   const camera=new THREE.PerspectiveCamera(58,1,.08,4000);
   camera.position.set(115,145,-50);camera.lookAt(-75,0,120);
   const hemi=new THREE.HemisphereLight(0xd8efff,0x68794c,1.7);scene.add(hemi);
@@ -428,10 +428,10 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     // them, rather than in a single jump: the height drawn, eased after the physics.
     let drawnY=Number.NaN;
     const settle=()=>{stepper.reset();lastFeet.copy(physics.feet);nextFeet.copy(lastFeet);avatar.position.copy(lastFeet);drawnY=Number.NaN;};
-    const setPlaying=(v:boolean)=>{if(!state.ready&&v)return;if(v)audio.start();state.playing=v;state.overview=false;scene.fog=campusFog;camera.up.set(0,1,0);sky.group.visible=true;keys.clear();state.runLock=false;stickX=0;stickY=0;drag=false;if(v){hasStarted=true;follow(0,true);renderer.domElement.focus();}publish();};
-    const travel=(id:Landmark)=>{const p=LANDMARKS[id];if(!p)throw new Error('Unknown campus destination');audio.start();if(['library','gallery','admin'].includes(id)&&!state.outerReady)return;const floor=world.rayIntersect(new THREE.Ray(new THREE.Vector3(p.x,10,p.z),new THREE.Vector3(0,-1,0)));physics.teleport(p.x,(floor?floor.position.y:0)+.015,p.z);settle();yaw=p.yaw;pitch=['library','gallery','admin'].includes(id)?-.16:id==='concert'?-.06:.26;avatar.rotation.y=yaw+Math.PI;if(state.riding||transition)parkBicycle();crash=-1;stun=0;scene.fog=campusFog;camera.up.set(0,1,0);sky.group.visible=true;state.location=p.label;state.x=p.x;state.y=avatar.position.y;state.z=p.z;state.grounded=false;state.overview=false;state.playing=true;state.runLock=false;stickX=0;stickY=0;hasStarted=true;keys.clear();drag=false;follow(0,true);publish();renderer.domElement.focus();};
+    const setPlaying=(v:boolean)=>{if(!state.ready&&v)return;if(!v&&document.pointerLockElement===canvas)document.exitPointerLock?.();if(v)audio.start();state.playing=v;state.overview=false;scene.fog=campusFog;camera.up.set(0,1,0);sky.group.visible=true;keys.clear();state.runLock=false;stickX=0;stickY=0;drag=false;if(v){hasStarted=true;follow(0,true);canvas.focus();}publish();};
+    const travel=(id:Landmark)=>{const p=LANDMARKS[id];if(!p)throw new Error('Unknown campus destination');audio.start();if(['library','gallery','admin'].includes(id)&&!state.outerReady)return;const floor=world.rayIntersect(new THREE.Ray(new THREE.Vector3(p.x,10,p.z),new THREE.Vector3(0,-1,0)));physics.teleport(p.x,(floor?floor.position.y:0)+.015,p.z);settle();yaw=p.yaw;pitch=['library','gallery','admin'].includes(id)?-.16:id==='concert'?-.06:.26;avatar.rotation.y=yaw+Math.PI;if(state.riding||transition)parkBicycle();crash=-1;stun=0;scene.fog=campusFog;camera.up.set(0,1,0);sky.group.visible=true;state.location=p.label;state.x=p.x;state.y=avatar.position.y;state.z=p.z;state.grounded=false;state.overview=false;state.playing=true;state.runLock=false;stickX=0;stickY=0;hasStarted=true;keys.clear();drag=false;follow(0,true);publish();canvas.focus();};
     const reset=()=>travel('gym');
-    const overview=()=>{state.playing=false;state.overview=true;keys.clear();state.runLock=false;avatar.visible=true;scene.fog=null;sky.group.visible=false;const height=Math.max(650,1250/camera.aspect)/(2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2)));camera.up.set(0,0,1);camera.position.set(-495,height,200);camera.lookAt(-495,0,200);publish();};
+    const overview=()=>{if(document.pointerLockElement===canvas)document.exitPointerLock?.();state.playing=false;state.overview=true;keys.clear();state.runLock=false;avatar.visible=true;scene.fog=null;sky.group.visible=false;const height=Math.max(650,1250/camera.aspect)/(2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2)));camera.up.set(0,0,1);camera.position.set(-495,height,200);camera.lookAt(-495,0,200);publish();};
     // High draws the leafy trees; the other settings keep the cheap ones.
     const stands=[stand];
     // High draws a larger, finer shadow map; Performance a smaller one.
@@ -519,9 +519,41 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     const visibility=()=>{if(document.hidden){blur();audio.suspend();}else audio.resume();};
     // Touch never reports movementX, so the drag delta is measured by hand.
     const touches=new Map<number,{x:number;y:number}>();let pinch=0;
-    const pointerDown=(e:PointerEvent)=>{if(!state.playing)return;touches.set(e.pointerId,{x:e.clientX,y:e.clientY});drag=true;renderer.domElement.setPointerCapture(e.pointerId);};
+    let wasPointerLocked=false;
+    const requestLock=()=>{
+      if(!state.playing||state.overview||document.pointerLockElement===canvas)return;
+      try{
+        const p=canvas.requestPointerLock?.() as unknown;
+        if(p&&typeof (p as Promise<void>).catch==='function')(p as Promise<void>).catch(()=>{});
+      }catch{}
+    };
+    const pointerLockChange=()=>{
+      const isLocked=document.pointerLockElement===canvas;
+      if(wasPointerLocked&&!isLocked){
+        if(state.playing)setPlaying(false);
+      }
+      wasPointerLocked=isLocked;
+    };
+    const mouseMove=(e:MouseEvent)=>{
+      if(!state.playing||document.pointerLockElement!==canvas)return;
+      const mx=THREE.MathUtils.clamp(e.movementX,-100,100);
+      const my=THREE.MathUtils.clamp(e.movementY,-100,100);
+      yaw-=mx*.0025;
+      pitch=THREE.MathUtils.clamp(pitch+my*.0022,-.95,1.08);
+    };
+    const pointerDown=(e:PointerEvent)=>{
+      if(!state.playing)return;
+      if(e.pointerType==='mouse'){
+        requestLock();
+      }else{
+        try{canvas.setPointerCapture(e.pointerId);}catch{}
+      }
+      touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      drag=true;
+    };
     const pointerUp=(e:PointerEvent)=>{touches.delete(e.pointerId);if(!touches.size){drag=false;pinch=0;}};
     const pointerMove=(e:PointerEvent)=>{
+      if(document.pointerLockElement===canvas)return;
       const last=touches.get(e.pointerId);if(!last||!state.playing)return;
       const dx=e.clientX-last.x,dy=e.clientY-last.y;
       touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
@@ -536,7 +568,8 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
     const wheel=(e:WheelEvent)=>{if(state.playing){e.preventDefault();distance=THREE.MathUtils.clamp(distance+e.deltaY*.006,2.5,14);}};
     const lost=()=>{state.error='The 3D display was interrupted. Reload the campus to restore it.';setPlaying(false);};
     window.addEventListener('keydown',down);window.addEventListener('keyup',up);window.addEventListener('blur',blur);document.addEventListener('visibilitychange',visibility);
-    const canvas=renderer.domElement;canvas.addEventListener('pointerdown',pointerDown);canvas.addEventListener('pointerup',pointerUp);canvas.addEventListener('pointercancel',pointerUp);canvas.addEventListener('pointermove',pointerMove);canvas.addEventListener('wheel',wheel,{passive:false});canvas.addEventListener('webglcontextlost',lost);
+    document.addEventListener('pointerlockchange',pointerLockChange);document.addEventListener('mousemove',mouseMove);
+    canvas.addEventListener('click',requestLock);canvas.addEventListener('pointerdown',pointerDown);canvas.addEventListener('pointerup',pointerUp);canvas.addEventListener('pointercancel',pointerUp);canvas.addEventListener('pointermove',pointerMove);canvas.addEventListener('wheel',wheel,{passive:false});canvas.addEventListener('webglcontextlost',lost);
 
     // The library and the lecture gallery arrive while the campus is already
     // being walked, then the walkable tree is rebuilt to take them in.
@@ -722,8 +755,8 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
       if(state.riding){
         // The frame points where it is steered, with no lag to slide against.
         avatar.rotation.set(0,rideHeading+Math.PI,0);
-        // Ease the camera round behind the rider unless it is being dragged.
-        if(!drag)yaw+=Math.atan2(Math.sin(rideHeading-yaw),Math.cos(rideHeading-yaw))*(1-Math.exp(-elapsed*2.4));
+        // Ease the camera round behind the rider unless it is being dragged or mouse locked.
+        if(!drag&&document.pointerLockElement!==canvas)yaw+=Math.atan2(Math.sin(rideHeading-yaw),Math.cos(rideHeading-yaw))*(1-Math.exp(-elapsed*2.4));
       }else if(transition&&transition.kind!=='approach'){
         // Square to the bicycle while getting on or off.
         avatar.quaternion.slerp(new THREE.Quaternion().setFromAxisAngle(upright,transition.bike.heading),1-Math.exp(-elapsed*12));
@@ -973,7 +1006,7 @@ export async function createGame(host:HTMLDivElement, onState:(s:GameState)=>voi
       }),
       // =============
       
-      dispose(){disposed=true;audio.dispose();cancelAnimationFrame(frame);window.removeEventListener('keydown',down);window.removeEventListener('keyup',up);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',pointerUp);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('webglcontextlost',lost);mixer.stopAllAction();
+      dispose(){disposed=true;audio.dispose();cancelAnimationFrame(frame);if(document.pointerLockElement===canvas)document.exitPointerLock?.();window.removeEventListener('keydown',down);window.removeEventListener('keyup',up);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);document.removeEventListener('pointerlockchange',pointerLockChange);document.removeEventListener('mousemove',mouseMove);canvas.removeEventListener('click',requestLock);canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',pointerUp);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('webglcontextlost',lost);mixer.stopAllAction();
         (remotePlayers as RemotePlayers | null)?.dispose();
         void leaveCampus();
         world.clear();treeWorld.clear();solids.clear();grass.dispose();crowd.dispose();audience.dispose();fleet.dispose();streetLights.dispose();sky.dispose();for(const s of stands)s.dispose();draco.dispose();cleanupResources();}};

@@ -126,7 +126,9 @@ export default function Campus() {
     {!state.playing && !state.overview && <section className="hud start-panel">
       <h1 className="font-orbitron">Take a walk.</h1>
       <div className="control-guide">
-        <span><MoveUpRight size={15} /> Drag to look</span>
+        <span className="mobile-only"><MoveUpRight size={15} /> Drag to look</span>
+        <span className="desktop-only"><MoveUpRight size={15} /> Click canvas to look</span>
+        <span className="desktop-only"><kbd>ESC</kbd> Pause</span>
         <span className="desktop-only"><kbd>W A S D</kbd> Move</span>
         <span className="desktop-only"><kbd>SHIFT</kbd> Run</span>
       </div>
