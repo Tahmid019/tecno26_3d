@@ -78,7 +78,7 @@ export default function Campus() {
   return <main className="campus-app">
     <div className="scene" ref={mount} aria-label="Interactive 3D NIT Silchar campus" />
 
-    // xyz
+    {/* // xyz
     <div style={{
       position: 'absolute', top: 12, left: '50%',
       transform: 'translateX(-50%)', zIndex: 100,
@@ -88,7 +88,7 @@ export default function Campus() {
       pointerEvents: 'none', whiteSpace: 'nowrap'
     }}>
       X: {state.x.toFixed(2)} | Y: {(state.y ?? 0).toFixed(2)} | Z: {state.z.toFixed(2)}
-    </div>
+    </div> */}
     
     <div className="vignette" />
 
