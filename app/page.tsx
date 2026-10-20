@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Play, Pause, ArrowUpRight, RotateCcw, MapPin, MoveUpRight, Map, ChevronDown, ArrowBigUp, Bike } from 'lucide-react';
+import { Play, Pause, ArrowUpRight, RotateCcw, MapPin, MoveUpRight, Map, ChevronDown, ArrowBigUp, Bike, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Game, GameState, Landmark } from '@/lib/game';
 import { registerCampusTools } from '@/lib/webmcp';
@@ -30,11 +30,37 @@ export default function Campus() {
   const game = useRef<Game | null>(null);
   const [open, setOpen] = useState(false);
   const [room, setRoom] = useState<Room | null>(null);
+  const [onlinePlayers, setOnlinePlayers] = useState(0)
   const [state, setState] = useState<GameState>({
     ready: true, playing: true, progress: 'Preparing campus', error: '', fps: 0,
     location: 'Sports complex', x: -20, z: 70, motion: 'Idle', percent: 0,
     outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false,
   });
+
+  // online players
+  useEffect(() => {
+    let currentRoom: Room | null = null;
+    let remove: (() => void) | undefined;
+
+    const timer = setInterval(() => {
+      const current = getRoom();
+
+      if (current && current !== currentRoom) {
+        remove?.();
+        currentRoom = current;
+        setRoom(current);
+
+        remove = current.onMessage("onlineCount", (data: { count: number }) => {
+          setOnlinePlayers(data.count);
+        });
+      }
+    }, 500);
+
+    return () => {
+      clearInterval(timer);
+      remove?.();
+    };
+  }, []);
 
   // game connection effect
   useEffect(() => {
@@ -110,6 +136,10 @@ export default function Campus() {
     <header className="hud topbar">
       <div className="brand"></div>
       <div className="top-actions">
+        <div className="flex self-center gap-1.5 text-xs text-white/70">
+          <Users size={14} />
+          <span>{onlinePlayers} online</span>
+        </div>
         <div className={`places ${open ? 'open' : ''}`}>
           <Button className="places-toggle" disabled={!state.ready} aria-expanded={open} onClick={() => setOpen(v => !v)}>
             <Map size={15} />{state.location}<ChevronDown size={15} className="caret" />
