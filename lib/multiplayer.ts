@@ -61,6 +61,11 @@ export function sendPlayerMovement(snapshot: PlayerSnapshot) {
   room.send("move", snapshot);
 }
 
+export function sendChatMessage(message: string) {
+  const text = message.trim().slice(0, 300);
+  if (text) room?.send("chat", { message: text });
+}
+
 export async function leaveCampus() {
   const current = room;
   room = null;

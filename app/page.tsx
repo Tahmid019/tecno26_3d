@@ -8,6 +8,10 @@ import { registerCampusTools } from '@/lib/webmcp';
 import { CampusMap } from '@/components/campus-map';
 import { Joystick } from '@/components/joystick';
 
+import MultiplayerChat from '@/components/MultiplayerChat';
+import { getRoom } from '@/lib/multiplayer';
+import type { Room } from '@colyseus/sdk';
+
 // 1. Campus destinations
 const PLACES: { id: Landmark; name: string }[] = [
   { id: 'gym', name: 'Sports complex' },
@@ -25,11 +29,22 @@ export default function Campus() {
   const mount = useRef<HTMLDivElement>(null);
   const game = useRef<Game | null>(null);
   const [open, setOpen] = useState(false);
+  const [room, setRoom] = useState<Room | null>(null);
   const [state, setState] = useState<GameState>({
     ready: true, playing: true, progress: 'Preparing campus', error: '', fps: 0,
     location: 'Sports complex', x: -20, z: 70, motion: 'Idle', percent: 0,
     outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false,
   });
+
+  // game connection effect
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const current = getRoom();
+      if (current) setRoom(current);
+    }, 500);
+
+    return () => clearInterval(timer);
+  }, []);
 
   // 3. Game initialization and cleanup
   useEffect(() => {
@@ -184,5 +199,6 @@ export default function Campus() {
         </Button>
       </div>
     </footer>
+    {room && <MultiplayerChat room={room} />}
   </main>;
 }

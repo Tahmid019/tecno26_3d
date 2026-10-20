@@ -130,3 +130,5 @@ kbd { font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .
   .location { top: 62px; }
 }
 @media (max-height: 560px) { .start-panel { bottom: 74px; padding: 16px 18px; } .start-panel h1 { font-size: 30px; margin: 6px 0 10px; } .minimap { display: none; } }
+
+
