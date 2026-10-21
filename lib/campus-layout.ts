@@ -14,6 +14,7 @@ export function adminPoint(x:number,y:number){
 export const ADMIN = {...adminPlacement, entrance:adminPoint(...adminPlacement.entranceLocal as [number,number]),
   front:{x:Math.sin(ADMIN_ROTATION),z:Math.cos(ADMIN_ROTATION)}};
 export const ADMIN_ROAD = adminPlacement.road;
+export const GATE={x:-1032,z:286.5};
 // Room past the enlarged administration plot to follow its front street a way.
 export const CAMPUS_BOUNDS = {minX:-1180,maxX:105,minZ:-90,maxZ:580};
 // One road runs from the campus junction past the library to the gallery.
