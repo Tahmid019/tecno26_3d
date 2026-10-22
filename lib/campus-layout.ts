@@ -16,7 +16,8 @@ export const ADMIN = {...adminPlacement, entrance:adminPoint(...adminPlacement.e
 export const ADMIN_ROAD = adminPlacement.road;
 export const GATE={x:-1032,z:286.5};
 // Room past the enlarged administration plot to follow its front street a way.
-export const CAMPUS_BOUNDS = {minX:-1180,maxX:105,minZ:-90,maxZ:580};
+// export const CAMPUS_BOUNDS = {minX:-1180,maxX:105,minZ:-90,maxZ:580};
+export const CAMPUS_BOUNDS = { minX: -1180, maxX: 750, minZ: -380, maxZ: 580 };
 // One road runs from the campus junction past the library to the gallery.
 export const LIBRARY_ROAD = [[-240,236],[-266,254],[-292,270],[-340,270],
   [-398.8,270],[-411.2,270],[-435,270],[-508,268]] as const;

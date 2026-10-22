@@ -48,7 +48,7 @@ export const LANDMARKS = {
   library: { label: 'APJ Abdul Kalam Library', x: LIBRARY.entrance.x, z: LIBRARY.entrance.z - 5, yaw: 0 },
   gallery: { label: 'Lecture gallery', x: GALLERY.entrance.x, z: GALLERY.entrance.z - 15, yaw: Math.PI },
   admin: { label: 'Administration building', x: ADMIN.entrance.x, z: ADMIN.entrance.z, yaw: ADMIN_ROTATION },
-  gate: { label: 'Main Gate', x: GATE.x,z:GATE.z,yaw:0}
+  gate: { label: 'Main Gate', x: GATE.x, z: GATE.z, yaw: 0 }
 } as const;
 export type Landmark = keyof typeof LANDMARKS;
 export type Quality = 'performance' | 'balanced' | 'high';
@@ -88,6 +88,145 @@ const AIR_POSE: Record<string, [number, number, number]> = {
   LeftArm: [-.70, 0, .55], RightArm: [-.70, 0, -.55],
   LeftForeArm: [.75, 0, 0], RightForeArm: [.75, 0, 0],
 };
+
+function createStylizedWater(
+  scene: THREE.Scene,
+  terrain: THREE.Object3D,
+  waterY: number
+) {
+  terrain.updateWorldMatrix(true, true);
+
+  // Fit the water plane to the terrain's world-space bounds.
+  const bounds = new THREE.Box3().setFromObject(terrain);
+  const size = bounds.getSize(new THREE.Vector3());
+  const center = bounds.getCenter(new THREE.Vector3());
+
+  // Extend the water beyond the island to hide its rectangular edges.
+  const margin = Math.max(size.x, size.z) * 0.75;
+
+  const geometry = new THREE.PlaneGeometry(
+    Math.max(size.x + 2 * margin, 10),
+    Math.max(size.z + 2 * margin, 10)
+  );
+
+  geometry.rotateX(-Math.PI / 2);
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uDeep: { value: new THREE.Color("#103d52") },
+      uShallow: { value: new THREE.Color("#398c91") },
+      uHighlight: { value: new THREE.Color("#b7e9d9") }
+    },
+
+    vertexShader: `
+      varying vec3 vWorldPosition;
+
+      void main() {
+        vec4 worldPos =
+          modelMatrix * vec4(position, 1.0);
+
+        vWorldPosition = worldPos.xyz;
+
+        gl_Position =
+          projectionMatrix * viewMatrix * worldPos;
+      }
+    `,
+
+    fragmentShader: `
+      uniform float uTime;
+      uniform vec3 uDeep;
+      uniform vec3 uShallow;
+      uniform vec3 uHighlight;
+
+      varying vec3 vWorldPosition;
+
+      float hash21(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+
+      float noise21(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+
+        float a = hash21(i);
+        float b = hash21(i + vec2(1.0, 0.0));
+        float c = hash21(i + vec2(0.0, 1.0));
+        float d = hash21(i + vec2(1.0, 1.0));
+
+        return mix(
+          mix(a, b, f.x),
+          mix(c, d, f.x),
+          f.y
+        );
+      }
+
+      void main() {
+        // World-space coordinates prevent texture swimming.
+        vec2 p = vWorldPosition.xz * 0.035;
+
+        float n = noise21(
+          p * 2.0 +
+          vec2(uTime * 0.06, -uTime * 0.04)
+        );
+
+        float w1 = sin(
+          p.x * 5.0 + p.y * 2.0 +
+          uTime * 0.65 + n * 1.5
+        );
+
+        float w2 = sin(
+          p.y * 6.0 - p.x * 1.5 -
+          uTime * 0.4
+        );
+
+        float wave = 0.5 + 0.5 * sin(
+          p.x * 2.0 + p.y * 3.0 +
+          uTime * 0.25
+        );
+
+        float highlights = smoothstep(
+          1.25, 1.85, w1 + w2
+        );
+
+        vec3 color = mix(
+          uDeep,
+          uShallow,
+          clamp(0.25 + 0.45 * n + 0.2 * wave, 0.0, 1.0)
+        );
+
+        color = mix(
+          color,
+          uHighlight,
+          highlights * 0.28
+        );
+
+        gl_FragColor = vec4(color, 0.92);
+
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+
+    transparent: true,
+    depthTest: true,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+
+  const waterMesh = new THREE.Mesh(geometry, material);
+
+  waterMesh.name = "Procedural Water";
+  waterMesh.position.set(center.x, waterY, center.z);
+  waterMesh.renderOrder = 1;
+
+  scene.add(waterMesh);
+
+  return { mesh: waterMesh, material };
+}
 export async function createGame(host: HTMLDivElement, onState: (s: GameState) => void): Promise<Game> {
   const state: GameState = { ready: false, playing: false, progress: 'Downloading the campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 67, motion: 'Idle', percent: 0, outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false, quality: 'balanced', overview: false, sound: true, time: '16:30', timeMode: 'auto' };
   const audio = createAudio();
@@ -183,12 +322,19 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     const campus = await loader.parseAsync(campusBytes, '');
     campus.scene.traverse(o => { if (o instanceof THREE.Mesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(campus.scene); campus.scene.updateMatrixWorld(true);
+    campus.scene.visible = false;
     prepare(campus.scene);
+    const area = await loader.loadAsync('/assets/campus_area.glb');
+    area.scene.traverse(o => { if (o instanceof THREE.Mesh) { o.castShadow = true; o.receiveShadow = true; } });
+    scene.add(area.scene); area.scene.updateMatrixWorld(true); prepare(area.scene);
     const concert = createConcert(); scene.add(concert.root); state.crowdCount = concert.crowdCount;
     concert.root.updateMatrixWorld(true); concert.root.traverse(o => { if (o instanceof THREE.Mesh && !(o instanceof THREE.InstancedMesh) && !(o.material as THREE.Material).transparent) { computeBoundsTree.call(o.geometry); o.raycast = acceleratedRaycast; solidForCamera(o); } });
 
+    const areaCol = await loader.loadAsync('/assets/campus_coll.glb');
+    // Added in water plane here
+    const water = createStylizedWater(scene, area.scene, -1); // Tune waterY to sit just below ground level
     const colliders = new THREE.Group();
-    colliders.add((await loader.parseAsync(collisionBytes, '')).scene, concert.colliders);
+    colliders.add((await loader.parseAsync(collisionBytes, '')).scene, concert.colliders, areaCol.scene);
     const world = new CollisionWorld(colliders);
     const physics = new PlayerPhysics(world); physics.teleport(-20, .6, 67);
     // What can be seen cannot be walked through. The walkable meshes leave out
@@ -791,7 +937,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
         // Into a wall or a post at speed, or into someone at a sprint: off.
         if (state.riding && myBike) { const hard = Math.max(physics.impact, knock, pendingCrash); if (hard > 6) throwOff(hard); }
         pendingCrash = 0;
-        if (avatar.position.y < -5 || avatar.position.x < CAMPUS_BOUNDS.minX || avatar.position.x > CAMPUS_BOUNDS.maxX || avatar.position.z < CAMPUS_BOUNDS.minZ || avatar.position.z > CAMPUS_BOUNDS.maxZ) reset();
+        if (avatar.position.y < -60 || avatar.position.x < CAMPUS_BOUNDS.minX || avatar.position.x > CAMPUS_BOUNDS.maxX || avatar.position.z < CAMPUS_BOUNDS.minZ || avatar.position.z > CAMPUS_BOUNDS.maxZ) reset();
       } else settle();
       const pace = Math.hypot(physics.velocity.x, physics.velocity.z);
       const moving = state.playing && direction.lengthSq() > .01 && pace > .12;
@@ -998,8 +1144,9 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       audio.update(elapsed, { riding: state.riding, speed: pace, coasting: coastingNow, nearGroup: THREE.MathUtils.clamp(1 - (crowd.nearestGroup(avatar.position) - 3) / 12, 0, 1), underTrees: .6, night: dayState.lamps });
       grass.update(elapsed, avatar.position, physics.grounded, !!state.overview);
       for (const s of stands) s.update(eventTime);
+      // Adding the water update incrementor here
+      water.material.uniforms.uTime.value += elapsed;
       renderer.render(scene, camera); acc += elapsed; frames++;
-
       // =================
       remotePlayers?.update(elapsed);
 
