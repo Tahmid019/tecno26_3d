@@ -322,15 +322,17 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     const campus = await loader.parseAsync(campusBytes, '');
     campus.scene.traverse(o => { if (o instanceof THREE.Mesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(campus.scene); campus.scene.updateMatrixWorld(true);
-    campus.scene.visible = false;
+    campus.scene.visible = true;
     prepare(campus.scene);
     const area = await loader.loadAsync('/assets/campus_area.glb');
+    area.scene.position.set(-513, 0, 231);
     area.scene.traverse(o => { if (o instanceof THREE.Mesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(area.scene); area.scene.updateMatrixWorld(true); prepare(area.scene);
     const concert = createConcert(); scene.add(concert.root); state.crowdCount = concert.crowdCount;
     concert.root.updateMatrixWorld(true); concert.root.traverse(o => { if (o instanceof THREE.Mesh && !(o instanceof THREE.InstancedMesh) && !(o.material as THREE.Material).transparent) { computeBoundsTree.call(o.geometry); o.raycast = acceleratedRaycast; solidForCamera(o); } });
 
     const areaCol = await loader.loadAsync('/assets/campus_coll.glb');
+    areaCol.scene.position.set(-513, 0, 231);
     // Added in water plane here
     const water = createStylizedWater(scene, area.scene, -1); // Tune waterY to sit just below ground level
     const colliders = new THREE.Group();
