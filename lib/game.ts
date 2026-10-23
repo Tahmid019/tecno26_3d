@@ -25,6 +25,7 @@ import { createSurfaces } from './surfaces';
 import { createStreetLights } from './streetlights';
 import { pushOut, type Post } from './obstacles';
 import { createComingSoon } from './comming_soon';
+import { createBoundary } from './boundary';
 
 // ===========
 import {
@@ -52,7 +53,7 @@ export const LANDMARKS = {
 } as const;
 export type Landmark = keyof typeof LANDMARKS;
 export type Quality = 'performance' | 'balanced' | 'high';
-export type GameState = { ready: boolean; playing: boolean; progress: string; error: string; fps: number; location: string; x: number; z: number; motion: string; percent: number; outerPercent: number; outerReady: boolean; runLock: boolean; riding: boolean; canMount: boolean; y?: number; grounded?: boolean; overview?: boolean; quality?: Quality; draws?: number; triangles?: number; animationTime?: number; crowdCount?: number; sound?: boolean; time?: string; timeMode?: TimeName; speed?: number };
+export type GameState = { ready: boolean; playing: boolean; progress: string; error: string; fps: number; location: string; x: number; z: number; motion: string; percent: number; outerPercent: number; outerReady: boolean; runLock: boolean; riding: boolean; canMount: boolean; y?: number; grounded?: boolean; overview?: boolean; quality?: Quality; draws?: number; triangles?: number; animationTime?: number; crowdCount?: number; sound?: boolean; time?: string; timeMode?: TimeName; speed?: number; outOfBounds?: boolean };
 export type Game = { setPlaying: (value: boolean) => void; reset: () => void; dispose: () => void; travel: (id: Landmark) => void; overview: () => void; setQuality: (q: Quality) => void; input: (key: string, pressed: boolean) => void; move: (x: number, y: number) => void; toggleRun: () => void; toggleRide: () => void; setSound: (on: boolean) => void; bell: () => void; setTime: (mode: TimeName) => void; getState: () => GameState; getMultiplayerSnapshot: () => MultiplayerSnapshot; };
 
 
@@ -105,8 +106,8 @@ function createStylizedWater(
   const margin = Math.max(size.x, size.z) * 0.75;
 
   const geometry = new THREE.PlaneGeometry(
-    Math.max(size.x + 2 * margin, 10),
-    Math.max(size.z + 2 * margin, 10)
+    Math.max(size.x, 10),
+    Math.max(size.z, 10)
   );
 
   geometry.rotateX(-Math.PI / 2);
@@ -228,7 +229,7 @@ function createStylizedWater(
   return { mesh: waterMesh, material };
 }
 export async function createGame(host: HTMLDivElement, onState: (s: GameState) => void): Promise<Game> {
-  const state: GameState = { ready: false, playing: false, progress: 'Downloading the campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 67, motion: 'Idle', percent: 0, outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false, quality: 'balanced', overview: false, sound: true, time: '16:30', timeMode: 'auto' };
+  const state: GameState = { ready: false, playing: false, progress: 'Downloading the campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 67, motion: 'Idle', percent: 0, outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false, quality: 'balanced', overview: false, sound: true, time: '16:30', timeMode: 'auto', outOfBounds: false };
   const audio = createAudio();
   const publish = () => onState({ ...state });
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#bdd7df'); const campusFog = new THREE.Fog('#bdd7df', 240, 700); scene.fog = campusFog;
@@ -335,6 +336,28 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     areaCol.scene.position.set(-513, 0, 231);
     // Added in water plane here
     const water = createStylizedWater(scene, area.scene, -1); // Tune waterY to sit just below ground level
+    let edgeOf: (x: number, z: number) => number = (x, z) =>
+      Math.min(x - CAMPUS_BOUNDS.minX, CAMPUS_BOUNDS.maxX - x, z - CAMPUS_BOUNDS.minZ, CAMPUS_BOUNDS.maxZ - z);
+    try {
+      const file = await fetch('/assets/campus_outline.json').then(r => { if (!r.ok) throw new Error(`campus_outline.json ${r.status}`); return r.json(); });
+      // The outline was drawn around campus_area.glb, so it moves with that GLB.
+      const boundary = createBoundary(file.loops, area.scene.position.x, area.scene.position.z);
+      edgeOf = boundary.edgeOf;
+
+      // Sanity check: every number here should be positive (comfortably more than 30).
+      console.table([...Object.entries(LANDMARKS).map(([id, p]) => ({ id, edge: Math.round(edgeOf(p.x, p.z)) })),
+        { id: 'ending gate', edge: Math.round(edgeOf(-1032, 286.5)) }]);
+
+      // Add ?debugBounds to the URL to draw the outline. Press Overview to see all of it.
+      if (new URLSearchParams(location.search).has('debugBounds')) {
+        for (const poly of boundary.polys) {
+          const line = new THREE.LineLoop(
+            new THREE.BufferGeometry().setFromPoints(poly.map(([x, z]) => new THREE.Vector3(x, 3, z))),
+            new THREE.LineBasicMaterial({ color: 0xff00ff, depthTest: false, fog: false }));
+          line.renderOrder = 999; line.frustumCulled = false; scene.add(line);
+        }
+      }
+    } catch (e) { console.warn('[Boundary] using the rectangle:', e); }
     const colliders = new THREE.Group();
     colliders.add((await loader.parseAsync(collisionBytes, '')).scene, concert.colliders, areaCol.scene);
     const world = new CollisionWorld(colliders);
@@ -595,6 +618,10 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     // The thumb stick runs only from right against its rim, and a thumb
     // resting near that line must not flicker in and out of a sprint.
     let stickRun = false, steering = 0;
+    // Campus boundary: haze starts EDGE_MARGIN metres inside the limit; past it the
+    // player is held for BOUNDARY_HOLD seconds under the glitch, then sent back.
+    const EDGE_MARGIN = 30, BOUNDARY_HOLD = 1.5;
+    let boundaryHold = -1; // -1 = not out of bounds, otherwise seconds since crossing
     let prev = performance.now(), acc = 0, frames = 0, lastJump = false, eventTime = 0;
     let shadowPrimed = false, shadowAge = 0, castingLive: boolean | null = null; const shadowCentre = new THREE.Vector3(), shadowAhead = new THREE.Vector3(), shadowAim = new THREE.Vector3();
     const camRay = new THREE.Raycaster(); camRay.firstHitOnly = true;
@@ -618,8 +645,18 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     let drawnY = Number.NaN;
     const settle = () => { stepper.reset(); lastFeet.copy(physics.feet); nextFeet.copy(lastFeet); avatar.position.copy(lastFeet); drawnY = Number.NaN; };
     const setPlaying = (v: boolean) => { if (!state.ready && v) return; if (!v && document.pointerLockElement === canvas) document.exitPointerLock?.(); if (v) audio.start(); state.playing = v; state.overview = false; scene.fog = campusFog; camera.up.set(0, 1, 0); sky.group.visible = true; keys.clear(); state.runLock = false; stickX = 0; stickY = 0; drag = false; if (v) { hasStarted = true; follow(0, true); canvas.focus(); } publish(); };
-    const travel = (id: Landmark) => { const p = LANDMARKS[id]; if (!p) throw new Error('Unknown campus destination'); audio.start(); if (['library', 'gallery', 'admin'].includes(id) && !state.outerReady) return; const floor = world.rayIntersect(new THREE.Ray(new THREE.Vector3(p.x, 10, p.z), new THREE.Vector3(0, -1, 0))); physics.teleport(p.x, (floor ? floor.position.y : 0) + .015, p.z); settle(); yaw = p.yaw; pitch = ['library', 'gallery', 'admin'].includes(id) ? -.16 : id === 'concert' ? -.06 : .26; avatar.rotation.y = yaw + Math.PI; if (state.riding || transition) parkBicycle(); crash = -1; stun = 0; scene.fog = campusFog; camera.up.set(0, 1, 0); sky.group.visible = true; state.location = p.label; state.x = p.x; state.y = avatar.position.y; state.z = p.z; state.grounded = false; state.overview = false; state.playing = true; state.runLock = false; stickX = 0; stickY = 0; hasStarted = true; keys.clear(); drag = false; follow(0, true); publish(); canvas.focus(); };
+    const travel = (id: Landmark) => { const p = LANDMARKS[id]; if (!p) throw new Error('Unknown campus destination'); audio.start(); if (['library', 'gallery', 'admin'].includes(id) && !state.outerReady) return; const floor = world.rayIntersect(new THREE.Ray(new THREE.Vector3(p.x, 10, p.z), new THREE.Vector3(0, -1, 0))); physics.teleport(p.x, (floor ? floor.position.y : 0) + .015, p.z); settle(); yaw = p.yaw; pitch = ['library', 'gallery', 'admin'].includes(id) ? -.16 : id === 'concert' ? -.06 : .26; avatar.rotation.y = yaw + Math.PI; if (state.riding || transition) parkBicycle(); crash = -1; stun = 0; scene.fog = campusFog; boundaryHold = -1; state.outOfBounds = false; camera.up.set(0, 1, 0); sky.group.visible = true; state.location = p.label; state.x = p.x; state.y = avatar.position.y; state.z = p.z; state.grounded = false; state.overview = false; state.playing = true; state.runLock = false; stickX = 0; stickY = 0; hasStarted = true; keys.clear(); drag = false; follow(0, true); publish(); canvas.focus(); };
     const reset = () => travel('gym');
+    const nearestLandmark = (x: number, z: number): Landmark => {
+      let best: Landmark = 'gym', bestD = Infinity;
+      for (const id of Object.keys(LANDMARKS) as Landmark[]) {
+        // travel() ignores these until the outer buildings have streamed in.
+        if (!state.outerReady && ['library', 'gallery', 'admin'].includes(id)) continue;
+        const d = Math.hypot(x - LANDMARKS[id].x, z - LANDMARKS[id].z);
+        if (d < bestD) { best = id; bestD = d; }
+      }
+      return best;
+    };
     const overview = () => { if (document.pointerLockElement === canvas) document.exitPointerLock?.(); state.playing = false; state.overview = true; keys.clear(); state.runLock = false; avatar.visible = true; scene.fog = null; sky.group.visible = false; const height = Math.max(650, 1250 / camera.aspect) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))); camera.up.set(0, 0, 1); camera.position.set(-495, height, 200); camera.lookAt(-495, 0, 200); publish(); };
     // High draws the leafy trees; the other settings keep the cheap ones.
     const stands = [stand];
@@ -939,8 +976,31 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
         // Into a wall or a post at speed, or into someone at a sprint: off.
         if (state.riding && myBike) { const hard = Math.max(physics.impact, knock, pendingCrash); if (hard > 6) throwOff(hard); }
         pendingCrash = 0;
-        if (avatar.position.y < -60 || avatar.position.x < CAMPUS_BOUNDS.minX || avatar.position.x > CAMPUS_BOUNDS.maxX || avatar.position.z < CAMPUS_BOUNDS.minZ || avatar.position.z > CAMPUS_BOUNDS.maxZ) reset();
+        // if (avatar.position.y < -60 || avatar.position.x < CAMPUS_BOUNDS.minX || avatar.position.x > CAMPUS_BOUNDS.maxX || avatar.position.z < CAMPUS_BOUNDS.minZ || avatar.position.z > CAMPUS_BOUNDS.maxZ) reset();
+        if (avatar.position.y < -60) reset();
       } else settle();
+      // ---- Campus boundary: haze near the edge, glitch + return past it ----
+      if (state.playing) {
+        const edge = edgeOf(avatar.position.x, avatar.position.z);
+        // 0 well inside, 1 at the limit, eased so the fog creeps in rather than snapping.
+        const haze = THREE.MathUtils.smoothstep(EDGE_MARGIN - edge, 0, EDGE_MARGIN);
+        campusFog.near = THREE.MathUtils.lerp(240, 8, haze);
+        campusFog.far = THREE.MathUtils.lerp(700, 45, haze);
+
+        if (edge < 0 && boundaryHold < 0) {
+          boundaryHold = 0;
+          stun = BOUNDARY_HOLD + .5;      // reuses the crash "winded" state: input zeroed, no jumping
+          state.outOfBounds = true; publish();
+        }
+        if (boundaryHold >= 0) {
+          boundaryHold += elapsed;
+          if (boundaryHold >= BOUNDARY_HOLD) {
+            boundaryHold = -1;
+            state.outOfBounds = false;     // set before travel() so its publish() carries it
+            travel(nearestLandmark(avatar.position.x, avatar.position.z));
+          }
+        }
+      }
       const pace = Math.hypot(physics.velocity.x, physics.velocity.z);
       const moving = state.playing && direction.lengthSq() > .01 && pace > .12;
       if (state.riding) {

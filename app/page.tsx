@@ -160,6 +160,35 @@ export default function Campus() {
       <CampusMap x={state.x} z={state.z} />
     </div>}
 
+    {/* 7b. Boundary glitch overlay — below mobile controls */}
+    {state.outOfBounds && (
+      <div className="boundary-glitch-overlay">
+        <div className="hud-frame">
+          <div className="corner-bracket top-left"></div>
+          <div className="corner-bracket top-right"></div>
+          <div className="corner-bracket bottom-left"></div>
+          <div className="corner-bracket bottom-right"></div>
+
+          <div className="hud-telemetry top-right-telemetry">
+            <div>5.27.016.NET.TGY.</div>
+            <div>BIT: BUES</div>
+            <div>01 / 14:5:18</div>
+          </div>
+          <div className="hud-telemetry bottom-left-telemetry">
+            PROT. F-A501
+          </div>
+
+          <div className="hud-logo"></div>
+
+          <div className="hud-content">
+            <h1 className="main-title">AREA BEYOND LIMITS</h1>
+            <div className="sub-title">BOUNDARY SECTOR: UNSTABLE</div>
+            <div className="sub-title">COORDINATES: DEVIANT</div>
+          </div>
+        </div>
+      </div>
+    )}
+
     {/* 8. Mobile movement and action controls */}
     {state.playing && <div className="hud pad" aria-label="Movement controls">
       <Joystick locked={state.runLock} onMove={stick} onLock={() => game.current?.toggleRun()} />
