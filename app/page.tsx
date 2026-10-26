@@ -11,6 +11,7 @@ import { Joystick } from '@/components/joystick';
 import MultiplayerChat from '@/components/MultiplayerChat';
 import { getRoom } from '@/lib/multiplayer';
 import type { Room } from '@colyseus/sdk';
+import AvatarCustomizer from '@/components/avatar/AvatarCustomizer';
 
 // 1. Campus destinations
 const PLACES: { id: Landmark; name: string }[] = [
@@ -30,6 +31,7 @@ export default function Campus() {
   const mount = useRef<HTMLDivElement>(null);
   const game = useRef<Game | null>(null);
   const [open, setOpen] = useState(false);
+  const [selectedAvatar, setSelectedAvatar] = useState("student.glb");
   const [room, setRoom] = useState<Room | null>(null);
   const [onlinePlayers, setOnlinePlayers] = useState(0)
   const [state, setState] = useState<GameState>({
@@ -77,25 +79,44 @@ export default function Campus() {
   useEffect(() => {
     let disposed = false;
     let unregister = () => {};
+    let instance: Game | null = null;
 
-    import('@/lib/game').then(async ({ createGame }) => {
-      if (disposed || !mount.current) return;
-      const instance = await createGame(mount.current, (s) => {
-        if (!disposed) setState(s);
+    import('@/lib/game')
+      .then(async ({ createGame }) => {
+        if (disposed || !mount.current) return;
+
+        const current = await createGame(mount.current, (s) => {
+          if (!disposed) setState(s);
+        }, selectedAvatar);
+
+        if (disposed) {
+          current.dispose();
+          return;
+        }
+
+        instance = current;
+        game.current = current;
+        unregister = registerCampusTools(current);
+      })
+      .catch((e) => {
+        if (!disposed) {
+          setState((s) => ({
+            ...s,
+            error: String(e.message || e),
+          }));
+        }
       });
-      if (disposed) instance.dispose();
-      else {
-        game.current = instance;
-        unregister = registerCampusTools(instance);
-      }
-    }).catch(e => setState(s => ({ ...s, error: String(e.message || e) })));
 
     return () => {
       disposed = true;
       unregister();
-      game.current?.dispose();
+      instance?.dispose();
+
+      if (game.current === instance) {
+        game.current = null;
+      }
     };
-  }, []);
+  }, [selectedAvatar]);
 
   // 4. Navigation and movement controls
   const go = (id: Landmark) => {
@@ -170,6 +191,11 @@ export default function Campus() {
     {state.playing && <div className="hud location"><MapPin size={15} /><span>{state.location}</span></div>}
 
     {!state.playing && !state.overview && <section className="hud start-panel">
+      <AvatarCustomizer
+        onSelect={(avatar) => {
+          setSelectedAvatar(avatar.file);
+        }}
+      />
       <h1 className="font-orbitron">Take a walk.</h1>
       <div className="control-guide">
         <span className="mobile-only"><MoveUpRight size={15} /> Drag to look</span>

@@ -55,7 +55,7 @@ h2 {font-family: 'Orbitron', sans-serif;}
 .streaming { top: 62px; right: 16px; font-size: 11px; letter-spacing: .6px; padding: 5px 10px; border-radius: 999px; background: #0f2b28cc; border: 1px solid #ffffff22; color: #cfe0d3; }
 
 /* ---- start panel ------------------------------------------------------ */
-.start-panel { left: 16px;  right: 16px; bottom: 84px; max-width: 460px; padding: 22px; background: linear-gradient(135deg, #102e2cf2, #16382de6, 1); border: 1px solid #ffffff23; backdrop-filter: blur(14px); border-radius: 3px 20px 20px 20px; }
+.start-panel { left: 16px;  right: 16px; bottom: 84px; max-width: 460px; padding: 22px; background: linear-gradient(135deg, #102e2cf2, #16382de6, 1); border: 1px solid #ffffff23; backdrop-filter: blur(14px); border-radius: 3px 20px 20px 20px;}
 .start-panel h1 { font-weight: 500; font-size: clamp(2.2rem, 9vw, 3.4rem); line-height: 1.03; letter-spacing: -2px; margin: 10px 0 14px; }
 .control-guide { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 18px; color: #cddad4; font-size: 13px;  }
 .control-guide > span { display: flex; align-items: center; gap: 6px; }

@@ -285,7 +285,7 @@ function createStylizedWater(
 
   return { mesh: waterMesh, material };
 }
-export async function createGame(host: HTMLDivElement, onState: (s: GameState) => void): Promise<Game> {
+export async function createGame(host: HTMLDivElement, onState: (s: GameState) => void, selectedAvatar = "student.glb"): Promise<Game> {
   const state: GameState = { ready: false, playing: false, progress: 'Downloading the campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 67, motion: 'Idle', percent: 0, outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false, quality: 'balanced', overview: false, sound: true, time: '16:30', timeMode: 'auto', outOfBounds: false };
   const audio = createAudio();
   const publish = () => onState({ ...state });
@@ -362,8 +362,15 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
 
     // Everything needed to stand on the ground and walk comes first; the
     // library follows in the background while the campus is already playable.
-    const [campusBytes, collisionBytes, studentBytes, treeBytes, npcBytes, crowdBytes] =
+    const [campusBytes, collisionBytes, treeBytes, npcBytes, crowdBytes] =
       await Promise.all(STAGES.campus.map(url => download.get(url)));
+    const response = await fetch(`/avatar/${selectedAvatar}`);
+
+    if (!response.ok) {
+      throw new Error(`Failed to load avatar: ${response.status}`);
+    }
+
+    const studentBytes = await download.get(`/avatar/${selectedAvatar}`);
     state.progress = 'Building the campus'; publish();
     // A timer, not a frame: a phone that is switched away mid-load gets no
     // animation frames at all, and the build would stall until it came back.

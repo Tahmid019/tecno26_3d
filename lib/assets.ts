@@ -29,7 +29,7 @@ const EXPECTED: Record<string, number> = {
 };
 
 export const STAGES: Record<Stage, string[]> = {
-  campus: ['/assets/campus.glb', '/assets/collision.glb', '/assets/student.glb', '/assets/trees.json', '/assets/npc.glb', '/assets/crowd.glb'],
+  campus: ['/assets/campus.glb', '/assets/collision.glb', '/assets/trees.json', '/assets/npc.glb', '/assets/crowd.glb'],
   outer: ['/assets/library.glb', '/assets/library-collision.glb',
     '/assets/gallery.glb', '/assets/gallery-collision.glb',
     '/assets/library-trees.json', '/assets/gallery-trees.json',
@@ -39,6 +39,10 @@ export const STAGES: Record<Stage, string[]> = {
 
 export type Progress = Record<Stage, number>;
 export type Downloader = { get(url: string): Promise<ArrayBuffer> };
+
+export function getAvatarAsset(avatarFile: string) {
+  return `/avatar/${avatarFile}`;
+}
 
 export function createDownloader(onProgress: (progress: Progress) => void): Downloader {
   const size = new Map(Object.entries(EXPECTED));
