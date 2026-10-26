@@ -1,4 +1,4 @@
-'use client';
+  'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Play, Pause, ArrowUpRight, RotateCcw, MapPin, MoveUpRight, Map, ChevronDown, ArrowBigUp, Bike, Users } from 'lucide-react';
@@ -22,6 +22,7 @@ const PLACES: { id: Landmark; name: string }[] = [
   { id: 'library', name: 'Library' },
   { id: 'gallery', name: 'Lecture gallery' },
   { id: 'admin', name: 'Administration' },
+  { id: 'gate', name: 'Main Gate'}
 ];
 
 export default function Campus() {
@@ -32,7 +33,7 @@ export default function Campus() {
   const [room, setRoom] = useState<Room | null>(null);
   const [onlinePlayers, setOnlinePlayers] = useState(0)
   const [state, setState] = useState<GameState>({
-    ready: true, playing: true, progress: 'Preparing campus', error: '', fps: 0,
+    ready: false, playing: false, progress: 'Preparing campus', error: '', fps: 0,
     location: 'Sports complex', x: -20, z: 70, motion: 'Idle', percent: 0,
     outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false,
   });
@@ -116,7 +117,7 @@ export default function Campus() {
   const stick = useCallback((x: number, y: number) => game.current?.move(x, y), []);
 
   // 5. Main 3D scene and header
-  return <main className="campus-app">
+  return <main className={`campus-app ${!state.ready ? 'loading' : ''}`}>
     <div className="scene" ref={mount} aria-label="Interactive 3D NIT Silchar campus" />
 
     {/* // xyz
@@ -131,7 +132,7 @@ export default function Campus() {
       X: {state.x.toFixed(2)} | Y: {(state.y ?? 0).toFixed(2)} | Z: {state.z.toFixed(2)}
     </div> */}
     
-    <div className="vignette" />
+    {state.playing && <div className="vignette" />}
 
     <header className="hud topbar">
       <div className="brand"></div>
@@ -171,7 +172,9 @@ export default function Campus() {
     {!state.playing && !state.overview && <section className="hud start-panel">
       <h1 className="font-orbitron">Take a walk.</h1>
       <div className="control-guide">
-        <span><MoveUpRight size={15} /> Drag to look</span>
+        <span className="mobile-only"><MoveUpRight size={15} /> Drag to look</span>
+        <span className="desktop-only"><MoveUpRight size={15} /> Click canvas to look</span>
+        <span className="desktop-only"><kbd>ESC</kbd> Pause</span>
         <span className="desktop-only"><kbd>W A S D</kbd> Move</span>
         <span className="desktop-only"><kbd>SHIFT</kbd> Run</span>
       </div>
@@ -202,6 +205,35 @@ export default function Campus() {
       <CampusMap x={state.x} z={state.z} />
     </div>}
 
+    {/* 7b. Boundary glitch overlay — below mobile controls */}
+    {state.outOfBounds && (
+      <div className="boundary-glitch-overlay">
+        <div className="hud-frame">
+          <div className="corner-bracket top-left"></div>
+          <div className="corner-bracket top-right"></div>
+          <div className="corner-bracket bottom-left"></div>
+          <div className="corner-bracket bottom-right"></div>
+
+          <div className="hud-telemetry top-right-telemetry">
+            <div>5.27.016.NET.TGY.</div>
+            <div>BIT: BUES</div>
+            <div>01 / 14:5:18</div>
+          </div>
+          <div className="hud-telemetry bottom-left-telemetry">
+            PROT. F-A501
+          </div>
+
+          <div className="hud-logo"></div>
+
+          <div className="hud-content">
+            <h1 className="main-title">AREA BEYOND LIMITS</h1>
+            <div className="sub-title">BOUNDARY SECTOR: UNSTABLE</div>
+            <div className="sub-title">COORDINATES: DEVIANT</div>
+          </div>
+        </div>
+      </div>
+    )}
+
     {/* 8. Mobile movement and action controls */}
     {state.playing && <div className="hud pad" aria-label="Movement controls">
       <Joystick locked={state.runLock} onMove={stick} onLock={() => game.current?.toggleRun()} />
@@ -216,7 +248,7 @@ export default function Campus() {
     </div>}
 
     {/* 9. Performance and reset controls */}
-    <footer className="hud bottom-bar">
+    {/* <footer className="hud bottom-bar">
       <span className="fps">{state.fps ? `${state.fps} FPS` : ''}</span>
       <div className="performance">
         <select aria-label="Graphics quality" value={state.quality || 'balanced'} onChange={e => game.current?.setQuality(e.target.value as 'performance' | 'balanced' | 'high')}>
