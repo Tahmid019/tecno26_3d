@@ -248,7 +248,7 @@ export default function Campus() {
     </div>}
 
     {/* 9. Performance and reset controls */}
-    {/* <footer className="hud bottom-bar">
+    {/* {/* <footer className="hud bottom-bar">
       <span className="fps">{state.fps ? `${state.fps} FPS` : ''}</span>
       <div className="performance">
         <select aria-label="Graphics quality" value={state.quality || 'balanced'} onChange={e => game.current?.setQuality(e.target.value as 'performance' | 'balanced' | 'high')}>
@@ -260,7 +260,7 @@ export default function Campus() {
           <RotateCcw size={16} />
         </Button>
       </div>
-    </footer>
+    </footer> */}
     {room && <MultiplayerChat room={room} />}
   </main>;
 }
