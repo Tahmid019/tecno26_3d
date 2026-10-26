@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { computeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 import { PlayerPhysics, movementVector, CollisionWorld } from './physics';
 import { createConcert, CONCERT } from './concert';
-import { createAudience, bakeAudienceGeometry } from './audience';
+import { createAudience, bakeAudienceGeometry, type Audience } from './audience';
 import { createSky } from './sky';
 import { LIBRARY, GALLERY, ADMIN, ADMIN_ROTATION, ADMIN_ROAD, CAMPUS_BOUNDS, LIBRARY_ROAD, onLibraryConnection, distanceToRoads, GATE } from './campus-layout';
 import { applyLibraryMaterials } from './library-materials';
@@ -90,47 +91,71 @@ const AIR_POSE: Record<string, [number, number, number]> = {
   LeftForeArm: [.75, 0, 0], RightForeArm: [.75, 0, 0],
 };
 
+const ARENA_LAMP_RED = '#ff1530', ARENA_LAMP_BLUE = '#2060ff';
+const ARENA_LAMP_PEAK = 400;     // spotlight intensity at full brightness – tune this
+const ARENA_FLASH_PERIOD = 1.2;  // seconds for one red→blue→red cycle
+
 function createStylizedWater(
   scene: THREE.Scene,
   terrain: THREE.Object3D,
-  waterY: number
+  waterY: number,
+  outlineLoops?: number[][][]
 ) {
   terrain.updateWorldMatrix(true, true);
 
-  // Fit the water plane to the terrain's world-space bounds.
+  // Fit the water plane to the terrain's world-space bounds as fallback.
   const bounds = new THREE.Box3().setFromObject(terrain);
   const size = bounds.getSize(new THREE.Vector3());
   const center = bounds.getCenter(new THREE.Vector3());
 
-  // Extend the water beyond the island to hide its rectangular edges.
-  const margin = Math.max(size.x, size.z) * 0.75;
-
-  const geometry = new THREE.PlaneGeometry(
-    Math.max(size.x, 10),
-    Math.max(size.z, 10)
-  );
-
-  geometry.rotateX(-Math.PI / 2);
+  let geometry: THREE.BufferGeometry;
+  if (outlineLoops && outlineLoops.length > 0) {
+    const shapes = outlineLoops.map(loop => {
+      const shape = new THREE.Shape();
+      loop.forEach(([x, z], i) => {
+        if (i === 0) shape.moveTo(x, -z);
+        else shape.lineTo(x, -z);
+      });
+      shape.closePath();
+      return shape;
+    });
+    geometry = new THREE.ShapeGeometry(shapes);
+    geometry.rotateX(-Math.PI / 2);
+  } else {
+    geometry = new THREE.PlaneGeometry(
+      Math.max(size.x, 10),
+      Math.max(size.z, 10)
+    );
+    geometry.rotateX(-Math.PI / 2);
+  }
 
   const material = new THREE.ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 },
-      uDeep: { value: new THREE.Color("#103d52") },
-      uShallow: { value: new THREE.Color("#398c91") },
-      uHighlight: { value: new THREE.Color("#b7e9d9") }
-    },
+    fog: true,
+    uniforms: THREE.UniformsUtils.merge([
+      THREE.UniformsLib.fog,
+      {
+        uTime: { value: 0 },
+        uDeep: { value: new THREE.Color("#0c2b3b") },
+        uShallow: { value: new THREE.Color("#277a82") },
+        uHighlight: { value: new THREE.Color("#d2f7ee") },
+        uSunColor: { value: new THREE.Color("#fff0d2") },
+        uRipplesRatio: { value: 1.0 },
+        uSplashesRatio: { value: 0.6 }
+      }
+    ]),
 
     vertexShader: `
+      #include <fog_pars_vertex>
       varying vec3 vWorldPosition;
 
       void main() {
-        vec4 worldPos =
-          modelMatrix * vec4(position, 1.0);
-
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
         vWorldPosition = worldPos.xyz;
 
-        gl_Position =
-          projectionMatrix * viewMatrix * worldPos;
+        vec4 mvPosition = viewMatrix * worldPos;
+        gl_Position = projectionMatrix * mvPosition;
+
+        #include <fog_vertex>
       }
     `,
 
@@ -139,8 +164,13 @@ function createStylizedWater(
       uniform vec3 uDeep;
       uniform vec3 uShallow;
       uniform vec3 uHighlight;
+      uniform vec3 uSunColor;
+      uniform float uRipplesRatio;
+      uniform float uSplashesRatio;
 
       varying vec3 vWorldPosition;
+
+      #include <fog_pars_fragment>
 
       float hash21(vec2 p) {
         p = fract(p * vec2(123.34, 456.21));
@@ -148,67 +178,90 @@ function createStylizedWater(
         return fract(p.x * p.y);
       }
 
+      vec2 hash22(vec2 p) {
+        float n = sin(dot(p, vec2(127.1, 311.7)));
+        return fract(vec2(269.5, 183.3) * n);
+      }
+
       float noise21(vec2 p) {
         vec2 i = floor(p);
         vec2 f = fract(p);
         f = f * f * (3.0 - 2.0 * f);
-
         float a = hash21(i);
         float b = hash21(i + vec2(1.0, 0.0));
         float c = hash21(i + vec2(0.0, 1.0));
         float d = hash21(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+      }
 
-        return mix(
-          mix(a, b, f.x),
-          mix(c, d, f.x),
-          f.y
-        );
+      // Splashes node: expanding Voronoi rings
+      float splashes(vec2 p) {
+        vec2 ip = floor(p);
+        vec2 fp = fract(p);
+        float splash = 0.0;
+        for (int y = -1; y <= 1; y++) {
+          for (int x = -1; x <= 1; x++) {
+            vec2 g = vec2(float(x), float(y));
+            vec2 o = hash22(ip + g);
+            vec2 diff = g + o - fp;
+            float d = length(diff);
+            float seed = hash21(ip + g);
+            float t = fract(uTime * 0.75 + seed * 9.13);
+            float ringRadius = t * 0.65;
+            float ring = smoothstep(0.05 * (1.0 - t), 0.0, abs(d - ringRadius)) * (1.0 - t);
+            float activeSplash = step(0.2, fract(seed * 37.19));
+            splash = max(splash, ring * activeSplash);
+          }
+        }
+        return splash;
       }
 
       void main() {
-        // World-space coordinates prevent texture swimming.
-        vec2 p = vWorldPosition.xz * 0.035;
+        vec2 p = vWorldPosition.xz * 0.04;
+        float time = uTime * 0.4;
 
-        float n = noise21(
-          p * 2.0 +
-          vec2(uTime * 0.06, -uTime * 0.04)
-        );
+        // Base drifting noise
+        float n1 = noise21(p * 2.5 + vec2(time * 0.2, -time * 0.15));
+        float n2 = noise21(p * 5.0 - vec2(time * 0.1, time * 0.25));
 
-        float w1 = sin(
-          p.x * 5.0 + p.y * 2.0 +
-          uTime * 0.65 + n * 1.5
-        );
+        // Ripples node: contour slope + noise
+        float slopeFreq = 8.0;
+        float rippleBase = (p.x * 0.7 + p.y * 0.7) * slopeFreq + time * 0.9;
+        float rippleNoise = noise21(p * 1.5 + floor(rippleBase) * 0.35);
+        float ripples = fract(rippleBase + rippleNoise * 0.4);
+        ripples = smoothstep(0.72, 0.96, ripples) * uRipplesRatio;
 
-        float w2 = sin(
-          p.y * 6.0 - p.x * 1.5 -
-          uTime * 0.4
-        );
+        // Splashes node: Voronoi raindrop/splash rings
+        float splashRings = splashes(vWorldPosition.xz * 0.18) * uSplashesRatio;
 
-        float wave = 0.5 + 0.5 * sin(
-          p.x * 2.0 + p.y * 3.0 +
-          uTime * 0.25
-        );
+        // Wave surface dynamics
+        float w1 = sin(p.x * 4.2 + p.y * 2.1 + time * 1.2 + n1 * 2.0);
+        float w2 = sin(p.y * 5.1 - p.x * 1.8 - time * 0.8 + n2 * 1.5);
+        float waveFoam = smoothstep(1.3, 1.85, w1 + w2);
 
-        float highlights = smoothstep(
-          1.25, 1.85, w1 + w2
-        );
+        // Water depth color interpolation
+        float waterDepth = clamp(0.35 + 0.45 * n1 + 0.2 * sin(time * 0.5 + p.x + p.y), 0.0, 1.0);
+        vec3 waterColor = mix(uDeep, uShallow, waterDepth);
 
-        vec3 color = mix(
-          uDeep,
-          uShallow,
-          clamp(0.25 + 0.45 * n + 0.2 * wave, 0.0, 1.0)
-        );
+        // Details mask: foam, ripples, splashes
+        float highlights = max(waveFoam * 0.4, max(ripples * 0.75, splashRings * 0.85));
+        waterColor = mix(waterColor, uHighlight, highlights);
 
-        color = mix(
-          color,
-          uHighlight,
-          highlights * 0.28
-        );
+        // Sun specular glint
+        vec3 sunDir = normalize(vec3(220.0, 265.0, -480.0));
+        vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+        vec2 normalOffset = vec2(w1, w2) * 0.05 + vec2(ripples, splashRings) * 0.03;
+        vec3 norm = normalize(vec3(-normalOffset.x, 1.0, -normalOffset.y));
+        vec3 halfV = normalize(sunDir + viewDir);
+        float spec = pow(max(dot(norm, halfV), 0.0), 36.0);
+        waterColor += uSunColor * spec * 0.35;
 
-        gl_FragColor = vec4(color, 0.92);
+        float alpha = clamp(0.96 + highlights * 0.04, 0.0, 1.0);
+        gl_FragColor = vec4(waterColor, alpha);
 
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
+        #include <fog_fragment>
       }
     `,
 
@@ -221,7 +274,11 @@ function createStylizedWater(
   const waterMesh = new THREE.Mesh(geometry, material);
 
   waterMesh.name = "Procedural Water";
-  waterMesh.position.set(center.x, waterY, center.z);
+  if (outlineLoops && outlineLoops.length > 0) {
+    waterMesh.position.set(terrain.position.x, waterY, terrain.position.z);
+  } else {
+    waterMesh.position.set(center.x, waterY, center.z);
+  }
   waterMesh.renderOrder = 1;
 
   scene.add(waterMesh);
@@ -232,9 +289,13 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
   const state: GameState = { ready: false, playing: false, progress: 'Downloading the campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 67, motion: 'Idle', percent: 0, outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false, quality: 'balanced', overview: false, sound: true, time: '16:30', timeMode: 'auto', outOfBounds: false };
   const audio = createAudio();
   const publish = () => onState({ ...state });
-  const scene = new THREE.Scene(); scene.background = new THREE.Color('#bdd7df'); const campusFog = new THREE.Fog('#bdd7df', 240, 700); scene.fog = campusFog;
+  const scene = new THREE.Scene(); scene.background = new THREE.Color('#bdd7df');
+  const campusFog = new THREE.Fog('#bdd7df', 240, 700);
+  const underwaterFog = new THREE.Fog('#08222d', 1, 35);
+  const underwaterColor = new THREE.Color('#08222d');
+  scene.fog = campusFog;
   const mobile = matchMedia('(pointer:coarse)').matches;
-  const renderer = new THREE.WebGLRenderer({ antialias: !mobile, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ antialias: !mobile, powerPreference: 'high-performance', alpha: false });
   renderer.setPixelRatio(Math.min(devicePixelRatio, mobile ? 1.4 : 1.25)); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
   const canvas = renderer.domElement; host.appendChild(canvas); canvas.tabIndex = 0; canvas.setAttribute('aria-label', 'Campus: click or drag to look, on-screen pad to move');
   const camera = new THREE.PerspectiveCamera(58, 1, .08, 4000);
@@ -283,7 +344,8 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
   const cleanupResources = () => { observer.disconnect(); scene.traverse(o => { if (o instanceof THREE.Mesh) { o.geometry.dispose(); for (const m of Array.isArray(o.material) ? o.material : [o.material]) { for (const value of Object.values(m)) if (value instanceof THREE.Texture) value.dispose(); m.dispose(); } } }); disposeDaylight(); renderer.dispose(); renderer.domElement.remove(); };
   try {
     const draco = new DRACOLoader().setDecoderPath('/draco/');
-    const loader = new GLTFLoader().setDRACOLoader(draco);
+    const ktx2 = new KTX2Loader().setTranscoderPath('/basis/').detectSupport(renderer);
+    const loader = new GLTFLoader().setDRACOLoader(draco).setKTX2Loader(ktx2);
     const download = createDownloader(({ campus: campusPercent, outer: outerPercent }) => {
       if (campusPercent !== state.percent || outerPercent !== state.outerPercent) {
         state.percent = campusPercent; state.outerPercent = outerPercent; publish();
@@ -334,19 +396,19 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
 
     const areaCol = await loader.loadAsync('/assets/campus_coll.glb');
     areaCol.scene.position.set(-513, 0, 231);
-    // Added in water plane here
-    const water = createStylizedWater(scene, area.scene, -1); // Tune waterY to sit just below ground level
+    let outlineLoops: number[][][] | undefined;
     let edgeOf: (x: number, z: number) => number = (x, z) =>
       Math.min(x - CAMPUS_BOUNDS.minX, CAMPUS_BOUNDS.maxX - x, z - CAMPUS_BOUNDS.minZ, CAMPUS_BOUNDS.maxZ - z);
     try {
       const file = await fetch('/assets/campus_outline.json').then(r => { if (!r.ok) throw new Error(`campus_outline.json ${r.status}`); return r.json(); });
+      outlineLoops = file.loops;
       // The outline was drawn around campus_area.glb, so it moves with that GLB.
       const boundary = createBoundary(file.loops, area.scene.position.x, area.scene.position.z);
       edgeOf = boundary.edgeOf;
 
       // Sanity check: every number here should be positive (comfortably more than 30).
       console.table([...Object.entries(LANDMARKS).map(([id, p]) => ({ id, edge: Math.round(edgeOf(p.x, p.z)) })),
-        { id: 'ending gate', edge: Math.round(edgeOf(-1032, 286.5)) }]);
+      { id: 'ending gate', edge: Math.round(edgeOf(-1032, 286.5)) }]);
 
       // Add ?debugBounds to the URL to draw the outline. Press Overview to see all of it.
       if (new URLSearchParams(location.search).has('debugBounds')) {
@@ -358,6 +420,9 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
         }
       }
     } catch (e) { console.warn('[Boundary] using the rectangle:', e); }
+
+    // Added in water plane here
+    const water = createStylizedWater(scene, area.scene, -1, outlineLoops); // Tune waterY to sit just below ground level
     const colliders = new THREE.Group();
     colliders.add((await loader.parseAsync(collisionBytes, '')).scene, concert.colliders, areaCol.scene);
     const world = new CollisionWorld(colliders);
@@ -404,6 +469,124 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
         const c = new THREE.Mesh(o.geometry); c.matrixAutoUpdate = false; c.matrix.copy(o.matrixWorld); solidGroup.add(c);
       });
     } catch (e) { console.error('[Ending gate] failed to load:', e); }
+
+    // Robowar audience
+    type ArenaLamp = { set: 0 | 1; spot: THREE.SpotLight; headMat: THREE.MeshStandardMaterial; glow: THREE.Sprite };
+    const robowarLamps: ArenaLamp[] = [];
+    let robowarFootprint: { cx: number; cz: number; sx: number; sz: number } | null = null;
+    let arenaAudience: Audience | null = null;
+
+    // ---- Robowar arena: robots3.glb with collision, positional audio and lamp posts ----
+    const robowarGroup = new THREE.Group(); robowarGroup.name = 'Robowar Arena';
+    let robowarSound: THREE.PositionalAudio | null = null;
+    try {
+      const roboGltf = await loader.loadAsync('/assets/robots3.glb');
+      const roboScene = roboGltf.scene;
+      roboScene.position.set(-449, 0, 246);
+      roboScene.scale.setScalar(1.1);
+      roboScene.traverse(o => { if (o instanceof THREE.Mesh) { o.castShadow = true; o.receiveShadow = true; } });
+      robowarGroup.add(roboScene);
+      robowarGroup.updateMatrixWorld(true);
+      scene.add(robowarGroup);
+      prepare(robowarGroup);
+
+      // Invisible bounding-box collision mesh so the player cannot enter the model space
+      const roboBounds = new THREE.Box3().setFromObject(roboScene);
+      const roboSize = roboBounds.getSize(new THREE.Vector3());
+      const roboCenter = roboBounds.getCenter(new THREE.Vector3());
+      const roboCollisionGeo = new THREE.BoxGeometry(roboSize.x, roboSize.y, roboSize.z);
+      const roboCollisionMesh = new THREE.Mesh(roboCollisionGeo);
+      robowarFootprint = { cx: roboCenter.x, cz: roboCenter.z, sx: roboSize.x, sz: roboSize.z };
+      roboCollisionMesh.position.copy(roboCenter);
+      roboCollisionMesh.updateMatrixWorld(true);
+      // Add to solidGroup so PlayerPhysics pushes the capsule out
+      const roboSolid = new THREE.Mesh(roboCollisionGeo);
+      roboSolid.matrixAutoUpdate = false;
+      roboSolid.matrix.identity();
+      roboSolid.matrix.setPosition(roboCenter);
+      solidGroup.add(roboSolid);
+
+      // Positional audio: robowar.mp3
+      // Volume ramps from 20% (refDistance away) to 80% of master at the model
+      const audioListener = new THREE.AudioListener();
+      camera.add(audioListener);
+      robowarSound = new THREE.PositionalAudio(audioListener);
+      const audioLoader = new THREE.AudioLoader();
+      audioLoader.load('/assets/robowar.mp3', (buffer) => {
+        robowarSound!.setBuffer(buffer);
+        robowarSound!.setLoop(true);
+        robowarSound!.setVolume(0.8);          // max volume = 80% of master
+        robowarSound!.setRefDistance(8);        // full volume within ~8 units
+        robowarSound!.setMaxDistance(120);      // audible up to 120 units away
+        robowarSound!.setRolloffFactor(2.2);   // how sharply it fades
+        robowarSound!.setDistanceModel('exponential');
+        // Only play if the game is already in active play and unmuted
+        if (state.playing && state.sound && !robowarSound!.isPlaying) {
+          robowarSound!.play();
+        }
+      });
+      // Attach the sound to the model so it emanates from the arena
+      roboScene.add(robowarSound);
+
+      // Four lamp posts, one at each corner. Opposite corners form a pair:
+      // one pair is red, the other blue, and they flash in turn at night.
+      const postHeight = 8;
+      const hx = roboSize.x / 2 + 2, hz = roboSize.z / 2 + 2;   // 2 m outside the model
+      const poleGeo = new THREE.CylinderGeometry(.09, .14, postHeight, 8);
+      const poleMat = new THREE.MeshStandardMaterial({ name: 'Robowar lamp post', color: '#22382d', roughness: .5, metalness: .5 });
+      const headGeo = new THREE.CylinderGeometry(.3, .4, .45, 12);
+      const makeHeadMat = (hex: string) => new THREE.MeshStandardMaterial({ name: 'Robowar lamp head', color: '#1b1b1b', roughness: .3, metalness: .6, emissive: new THREE.Color(hex), emissiveIntensity: 0 });
+      const headMats = [makeHeadMat(ARENA_LAMP_RED), makeHeadMat(ARENA_LAMP_BLUE)];
+      const glowMap = (() => {
+        const c = document.createElement('canvas'); c.width = c.height = 64;
+        const g = c.getContext('2d')!, r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+        r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(.25, 'rgba(255,255,255,.45)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+        const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+      })();
+
+      ([[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]] as const).forEach(([dx, dz], i) => {
+        const set = (i % 2) as 0 | 1;                          // 0,2 = red · 1,3 = blue
+        const colour = set === 0 ? ARENA_LAMP_RED : ARENA_LAMP_BLUE;
+        const x = roboCenter.x + dx, z = roboCenter.z + dz;
+        const hit = world.rayIntersect(new THREE.Ray(new THREE.Vector3(x, 70, z), new THREE.Vector3(0, -1, 0)));
+        const base = hit ? hit.position.y : roboBounds.min.y;
+
+        const pole = new THREE.Mesh(poleGeo, poleMat);
+        pole.position.set(x, base + postHeight / 2, z); pole.castShadow = true; pole.receiveShadow = true; scene.add(pole);
+
+        const head = new THREE.Mesh(headGeo, headMats[set]);
+        head.position.set(x, base + postHeight + .2, z); head.castShadow = true; scene.add(head);
+
+        const spot = new THREE.SpotLight(colour, 0, 70, Math.PI / 3, .5, 2);   // starts off; the night loop drives it
+        spot.position.copy(head.position); spot.castShadow = false;
+        spot.target.position.set(roboCenter.x, base, roboCenter.z);
+        scene.add(spot, spot.target);
+
+        const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowMap, color: colour, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+        glow.scale.setScalar(7); glow.position.copy(head.position); glow.position.y -= .3; scene.add(glow);
+
+        const poleSolid = new THREE.Mesh(new THREE.CylinderGeometry(.14, .14, postHeight, 6));
+        poleSolid.matrixAutoUpdate = false; poleSolid.matrix.identity(); poleSolid.matrix.setPosition(x, base + postHeight / 2, z);
+        solidGroup.add(poleSolid);
+
+        robowarLamps.push({ set, spot, headMat: headMats[set], glow });
+      });
+    } catch (e) { console.error('[Robowar Arena] failed to load:', e); }
+
+    let lampClock = 0;
+    const updateRobowarLamps = (dt: number, night: number) => {
+      lampClock += dt;
+      // Smooth square wave: 1 = red pair lit, 0 = blue pair lit
+      const a = THREE.MathUtils.smoothstep(Math.sin(lampClock * Math.PI * 2 / ARENA_FLASH_PERIOD), -.25, .25);
+      const level = [a, 1 - a];
+      for (const l of robowarLamps) {
+        const k = night < .01 ? 0 : night * (.06 + .94 * level[l.set]);
+        l.spot.intensity = ARENA_LAMP_PEAK * k;
+        l.headMat.emissiveIntensity = 3 * k;
+        (l.glow.material as THREE.SpriteMaterial).opacity = .9 * k;
+      }
+    };
     const solids = new CollisionWorld(solidGroup); physics.extra.push(solids);
 
     const student = await loader.parseAsync(studentBytes, '');
@@ -514,13 +697,43 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     scene.add(crowd.group); for (const m of crowd.materials) surfaces.patch(m, 'lamps');
     // The TECNOESIS audience and band: the student posed and baked a dozen
     // ways, one instanced draw for everyone, moving with the music.
-    const audience = createAudience({
-      geometry: bakeAudienceGeometry((await loader.parseAsync(crowdBytes, '')).scene, student.animations.find(c => c.name === 'Idle')!, planted.Idle ?? 0),
-      map: studentSkin, crowd: concert.audience, band: concert.band
-    });
+    // The TECNOESIS audience and band: the student posed and baked a dozen
+    // ways, one instanced draw for everyone, moving with the music.
+    const crowdModel = (await loader.parseAsync(crowdBytes, '')).scene;
+    const crowdIdle = student.animations.find(c => c.name === 'Idle')!;
+    const bakeCrowd = () => bakeAudienceGeometry(crowdModel, crowdIdle, planted.Idle ?? 0);
+    const audience = createAudience({ geometry: bakeCrowd(), map: studentSkin, crowd: concert.audience, band: concert.band });
+    concert.root.add(audience.mesh, audience.guitars); surfaces.patch(audience.material, 'lamps'); surfaces.patch(audience.guitarPaint, 'lamps');
     concert.root.add(audience.mesh, audience.guitars); surfaces.patch(audience.material, 'lamps'); surfaces.patch(audience.guitarPaint, 'lamps');
     const allRoads: number[][][] = [...roads, LIBRARY_ROAD.map(p => [p[0], p[1]]), ADMIN_ROAD];
     crowd.addRoutes(roads, roads);
+    // ---- Robowar arena: a ring of cheering spectators ----
+    if (robowarFootprint) {
+      type CrowdSpot = Parameters<typeof createAudience>[0]['crowd'][number];
+      const { cx, cz, sx, sz } = robowarFootprint;
+      const inner = Math.hypot(sx, sz) / 2 + 5.5;          // clears the corner lamp posts
+      const rows = mobile ? 2 : 3, rowGap = .9, pitch = .85;
+      let s2 = 4242; const rnd = () => { s2 = (s2 * 1664525 + 1013904223) >>> 0; return s2 / 4294967296; };
+      const ring: CrowdSpot[] = [];
+      for (let row = 0; row < rows; row++) {
+        const r = inner + row * rowGap, count = Math.floor(2 * Math.PI * r / pitch);
+        for (let i = 0; i < count; i++) {
+          const a = (i + rnd() * .6) / count * Math.PI * 2, rr = r + (rnd() - .5) * .3;
+          const lx = Math.sin(a) * rr, lz = Math.cos(a) * rr, wx = cx + lx, wz = cz + lz;
+          const y = groundHeight(wx, wz);
+          if (y === null || y < -.5 || distanceToRoads(wx, wz, allRoads) < 2.5) continue;
+          const probe = new Capsule(new THREE.Vector3(wx, y + .65, wz), new THREE.Vector3(wx, y + 1.7, wz), .3);
+          if (world.capsuleIntersect(probe) || treeWorld.capsuleIntersect(probe) || solids.capsuleIntersect(probe)) continue;
+          // x/z are relative to the arena centre, so everyone turns in towards it
+          ring.push({ x: lx, z: lz, y, scale: .94 + rnd() * .14, phase: rnd() * Math.PI * 2, cheer: rnd() < .75 });
+        }
+      }
+      if (ring.length) {
+        arenaAudience = createAudience({ geometry: bakeCrowd(), map: studentSkin, crowd: ring, band: [] });
+        arenaAudience.mesh.position.set(cx, 0, cz);
+        scene.add(arenaAudience.mesh); surfaces.patch(arenaAudience.material, 'lamps');   // lit by the night lamps like the rest
+      }
+    }
     // Open, level ground near a landmark, off the roads and clear of walls,
     // for a group to stand on or a rack of bicycles to wait on.
     const taken: THREE.Vector2[] = [new THREE.Vector2(-22.4, 69.3)];
@@ -644,7 +857,16 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     // them, rather than in a single jump: the height drawn, eased after the physics.
     let drawnY = Number.NaN;
     const settle = () => { stepper.reset(); lastFeet.copy(physics.feet); nextFeet.copy(lastFeet); avatar.position.copy(lastFeet); drawnY = Number.NaN; };
-    const setPlaying = (v: boolean) => { if (!state.ready && v) return; if (!v && document.pointerLockElement === canvas) document.exitPointerLock?.(); if (v) audio.start(); state.playing = v; state.overview = false; scene.fog = campusFog; camera.up.set(0, 1, 0); sky.group.visible = true; keys.clear(); state.runLock = false; stickX = 0; stickY = 0; drag = false; if (v) { hasStarted = true; follow(0, true); canvas.focus(); } publish(); };
+    const setPlaying = (v: boolean) => {
+      if (!state.ready && v) return;
+      if (!v && document.pointerLockElement === canvas) document.exitPointerLock?.();
+      if (v) audio.start();
+      if (robowarSound && robowarSound.buffer) {
+        if (v && state.sound && !robowarSound.isPlaying) robowarSound.play();
+        else if (!v && robowarSound.isPlaying) robowarSound.pause();
+      }
+      state.playing = v; state.overview = false; scene.fog = campusFog; camera.up.set(0, 1, 0); sky.group.visible = true; keys.clear(); state.runLock = false; stickX = 0; stickY = 0; drag = false; if (v) { hasStarted = true; follow(0, true); canvas.focus(); } publish();
+    };
     const travel = (id: Landmark) => { const p = LANDMARKS[id]; if (!p) throw new Error('Unknown campus destination'); audio.start(); if (['library', 'gallery', 'admin'].includes(id) && !state.outerReady) return; const floor = world.rayIntersect(new THREE.Ray(new THREE.Vector3(p.x, 10, p.z), new THREE.Vector3(0, -1, 0))); physics.teleport(p.x, (floor ? floor.position.y : 0) + .015, p.z); settle(); yaw = p.yaw; pitch = ['library', 'gallery', 'admin'].includes(id) ? -.16 : id === 'concert' ? -.06 : .26; avatar.rotation.y = yaw + Math.PI; if (state.riding || transition) parkBicycle(); crash = -1; stun = 0; scene.fog = campusFog; boundaryHold = -1; state.outOfBounds = false; camera.up.set(0, 1, 0); sky.group.visible = true; state.location = p.label; state.x = p.x; state.y = avatar.position.y; state.z = p.z; state.grounded = false; state.overview = false; state.playing = true; state.runLock = false; stickX = 0; stickY = 0; hasStarted = true; keys.clear(); drag = false; follow(0, true); publish(); canvas.focus(); };
     const reset = () => travel('gym');
     const nearestLandmark = (x: number, z: number): Landmark => {
@@ -984,8 +1206,8 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
         const edge = edgeOf(avatar.position.x, avatar.position.z);
         // 0 well inside, 1 at the limit, eased so the fog creeps in rather than snapping.
         const haze = THREE.MathUtils.smoothstep(EDGE_MARGIN - edge, 0, EDGE_MARGIN);
-        campusFog.near = THREE.MathUtils.lerp(240, 8, haze);
-        campusFog.far = THREE.MathUtils.lerp(700, 45, haze);
+        campusFog.near = THREE.MathUtils.lerp(30, 8, haze);
+        campusFog.far = THREE.MathUtils.lerp(80, 45, haze);
 
         if (edge < 0 && boundaryHold < 0) {
           boundaryHold = 0;
@@ -1149,19 +1371,34 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       if (rideBike && ride > .001) rider.apply(rideBike, rideState, ride);
       else if (!state.riding && !transition) rideBike = null;
       fleet.update(); fleet.posts(bikePosts, myBike);
-      eventTime += elapsed; concert.update(eventTime); audience.update(eventTime, Math.hypot(camera.position.x - CONCERT.x, camera.position.z - CONCERT.z)); concert.setNight(dayState.lamps); sky.group.position.set(camera.position.x, 0, camera.position.z); sky.update(eventTime);
+      eventTime += elapsed; concert.update(eventTime);
+      audience.update(eventTime, Math.hypot(camera.position.x - CONCERT.x, camera.position.z - CONCERT.z));
+      if (arenaAudience && robowarFootprint) arenaAudience.update(eventTime, Math.hypot(camera.position.x - robowarFootprint.cx, camera.position.z - robowarFootprint.cz), 220);
+      concert.setNight(dayState.lamps); sky.group.position.set(camera.position.x, 0, camera.position.z); sky.update(eventTime);
       // The clock: a day hour in a minute, nights three times faster.
       if (state.timeMode === 'auto' && state.ready) hours = (hours + elapsed * hoursPerSecond(hours)) % 24;
       daylightAt(hours, dayState);
       sun.color.copy(dayState.lightColor); sun.intensity = dayState.lightIntensity * 1.12;
+      water.material.uniforms.uSunColor.value.copy(dayState.lightColor);
       if (sunward.angleTo(dayState.light) > .003) { setLightDirection(dayState.light); shadowAge = 99; }
       // The sky light now carries most of the ambient; the hemisphere fills in.
       hemi.color.copy(dayState.hemiSky); hemi.groundColor.copy(dayState.hemiGround); hemi.intensity = dayState.hemiIntensity * .47;
-      campusFog.color.copy(dayState.horizon); (scene.background as THREE.Color).copy(dayState.horizon);
+      const isUnderwater = camera.position.y < -1;
+      if (isUnderwater) {
+        scene.fog = underwaterFog;
+        (scene.background as THREE.Color).copy(underwaterColor);
+        sky.group.visible = false;
+      } else {
+        scene.fog = campusFog;
+        campusFog.color.copy(dayState.horizon);
+        (scene.background as THREE.Color).copy(dayState.horizon);
+        sky.group.visible = true;
+      }
       renderer.toneMappingExposure = dayState.exposure;
       sky.setPalette(dayState);
       scene.environment = skyLight.update(dayState); scene.environmentIntensity = .72;
       surfaces.setNight(dayState.lamps); streetLights.update(elapsed, dayState.lamps, camera.position, surfaces.uniforms.uLamps.value);
+      updateRobowarLamps(elapsed, Number(dayState.lamps));
       if (state.playing) follow(elapsed);
       const floor = world.rayIntersect(new THREE.Ray(avatar.position.clone().add(new THREE.Vector3(0, .3, 0)), new THREE.Vector3(0, -1, 0)));
       // The student's contact shadow, stretched under the bicycle when riding.
@@ -1264,8 +1501,10 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       dispose() {
         disposed = true; audio.dispose(); cancelAnimationFrame(frame); if (document.pointerLockElement === canvas) document.exitPointerLock?.(); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); document.removeEventListener('visibilitychange', visibility); document.removeEventListener('pointerlockchange', pointerLockChange); document.removeEventListener('mousemove', mouseMove); canvas.removeEventListener('click', requestLock); canvas.removeEventListener('pointerdown', pointerDown); canvas.removeEventListener('pointerup', pointerUp); canvas.removeEventListener('pointercancel', pointerUp); canvas.removeEventListener('pointermove', pointerMove); canvas.removeEventListener('wheel', wheel); canvas.removeEventListener('webglcontextlost', lost); mixer.stopAllAction();
         (remotePlayers as RemotePlayers | null)?.dispose();
+        (arenaAudience as Audience | null)?.dispose();
+        for (const l of robowarLamps) { l.headMat.dispose(); l.glow.material.map?.dispose(); l.glow.material.dispose(); }
         void leaveCampus();
-        world.clear(); treeWorld.clear(); solids.clear(); grass.dispose(); crowd.dispose(); audience.dispose(); fleet.dispose(); streetLights.dispose(); sky.dispose(); for (const s of stands) s.dispose(); draco.dispose(); cleanupResources();
+        world.clear(); treeWorld.clear(); solids.clear(); grass.dispose(); crowd.dispose(); audience.dispose(); fleet.dispose(); streetLights.dispose(); sky.dispose(); for (const s of stands) s.dispose(); if (robowarSound) { robowarSound.stop(); robowarSound.disconnect(); } ktx2.dispose(); draco.dispose(); cleanupResources();
       }
     };
   } catch (error) { cleanupResources(); throw error; }

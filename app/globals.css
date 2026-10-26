@@ -22,7 +22,8 @@ button:disabled { cursor: default; opacity: .45; }
 button:focus-visible, select:focus-visible { outline: 3px solid #edebf3; outline-offset: 3px; }
 h2 {font-family: 'Orbitron', sans-serif;}
 
-.campus-app { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: #142923 url('/assets/campus-cover.jpg') center/cover; touch-action: none; }
+.campus-app { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: #142923; touch-action: none; }
+.campus-app.loading { background: #142923 url('/assets/campus-cover.jpg') center/cover; }
 .scene, .scene canvas, .vignette { position: absolute; inset: 0; width: 100%; height: 100%; }
 .scene canvas { display: block; touch-action: none; outline: none; }
 .vignette { pointer-events: none; background: linear-gradient(180deg, #041e296b, transparent 22%, transparent 66%, #041d26a8); }

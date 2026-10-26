@@ -27,7 +27,7 @@ export default function Campus() {
   const game = useRef<Game | null>(null);
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<GameState>({
-    ready: true, playing: true, progress: 'Preparing campus', error: '', fps: 0,
+    ready: false, playing: false, progress: 'Preparing campus', error: '', fps: 0,
     location: 'Sports complex', x: -20, z: 70, motion: 'Idle', percent: 0,
     outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false,
   });
@@ -76,7 +76,7 @@ export default function Campus() {
   const stick = useCallback((x: number, y: number) => game.current?.move(x, y), []);
 
   // 5. Main 3D scene and header
-  return <main className="campus-app">
+  return <main className={`campus-app ${!state.ready ? 'loading' : ''}`}>
     <div className="scene" ref={mount} aria-label="Interactive 3D NIT Silchar campus" />
 
     // xyz
@@ -91,7 +91,7 @@ export default function Campus() {
       X: {state.x.toFixed(2)} | Y: {(state.y ?? 0).toFixed(2)} | Z: {state.z.toFixed(2)}
     </div>
     
-    <div className="vignette" />
+    {state.playing && <div className="vignette" />}
 
     <header className="hud topbar">
       <div className="brand"></div>
