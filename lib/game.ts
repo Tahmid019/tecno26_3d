@@ -1389,7 +1389,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       water.material.uniforms.uSunColor.value.copy(dayState.lightColor);
       if (sunward.angleTo(dayState.light) > .003) { setLightDirection(dayState.light); shadowAge = 99; }
       // The sky light now carries most of the ambient; the hemisphere fills in.
-      hemi.color.copy(dayState.hemiSky); hemi.groundColor.copy(dayState.hemiGround); hemi.intensity = dayState.hemiIntensity * .47;
+      hemi.color.copy(dayState.hemiSky); hemi.groundColor.copy(dayState.hemiGround); hemi.intensity = dayState.hemiIntensity * (dayState.lamps ? 0.9 : 0.47);
       const isUnderwater = camera.position.y < -1;
       if (isUnderwater) {
         scene.fog = underwaterFog;
