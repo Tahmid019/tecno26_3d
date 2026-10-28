@@ -9,7 +9,7 @@ export type Stage = 'campus' | 'outer';
 
 /** Approximate sizes, only used to weight the bar before headers arrive. */
 const EXPECTED: Record<string, number> = {
-  '/assets/campus.glb': 2_100_000,
+  '/assets/campus_upd.glb': 2_100_000,
   '/assets/collision.glb': 2_150_000,
   '/assets/student.glb': 2_320_000,
   '/assets/trees.json': 65_000,
@@ -29,7 +29,7 @@ const EXPECTED: Record<string, number> = {
 };
 
 export const STAGES: Record<Stage, string[]> = {
-  campus: ['/assets/campus.glb', '/assets/collision.glb', '/assets/trees.json', '/assets/npc.glb', '/assets/crowd.glb'],
+  campus: ['/assets/campus_upd.glb', '/assets/collision.glb', '/assets/trees.json', '/assets/npc.glb', '/assets/crowd.glb'],
   outer: ['/assets/library.glb', '/assets/library-collision.glb',
     '/assets/gallery.glb', '/assets/gallery-collision.glb',
     '/assets/library-trees.json', '/assets/gallery-trees.json',
