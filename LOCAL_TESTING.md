@@ -102,7 +102,7 @@ percentage on the start panel, and the outlying buildings (library, lecture
 gallery and administration) stream in afterwards while you are already
 exploring; a small chip shows their progress and their destinations stay greyed
 out until they land. Over the wire the whole campus is
-about 4.3 MB: `campus.glb` and `library.glb` are Draco-compressed, the character
+about 4.3 MB: `campus_upd.glb` and `library.glb` are Draco-compressed, the character
 and aerial textures are JPEG rather than PNG, and `scripts/serve.mjs` gzips
 what is left. Uncompressed, the same assets were about 41 MB.
 

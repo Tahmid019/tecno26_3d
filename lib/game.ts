@@ -515,10 +515,10 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       audioLoader.load('/assets/robowar.mp3', (buffer) => {
         robowarSound!.setBuffer(buffer);
         robowarSound!.setLoop(true);
-        robowarSound!.setVolume(0.8);          // max volume = 80% of master
+        robowarSound!.setVolume(0.98);          // max volume = 80% of master
         robowarSound!.setRefDistance(8);        // full volume within ~8 units
         robowarSound!.setMaxDistance(120);      // audible up to 120 units away
-        robowarSound!.setRolloffFactor(2.2);   // how sharply it fades
+        robowarSound!.setRolloffFactor(1.9);   // how sharply it fades
         robowarSound!.setDistanceModel('exponential');
         // Only play if the game is already in active play and unmuted
         if (state.playing && state.sound && !robowarSound!.isPlaying) {
@@ -647,6 +647,83 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     let grassProbe = createGrassProbe(lawns, groundHeight);
     const grass = createGrass((x, z) => grassProbe(x, z));
     scene.add(grass.group);
+    // ---- GLB-based floating landmark pointers ----
+
+    const landmarkEntries = Object.values(LANDMARKS);
+
+    type LandmarkArrow = {
+      group: THREE.Group;
+      baseY: number;
+      phase: number;
+    };
+
+    const landmarkArrows: LandmarkArrow[] = [];
+    const arrowClock = new THREE.Clock();
+
+    try {
+      // Load the arrow model once and reuse its geometry/materials.
+      const arrowGltf = await loader.loadAsync('/assets/arrowhead.glb');
+      const arrowTemplate = arrowGltf.scene;
+
+      arrowTemplate.updateMatrixWorld(true);
+
+      // Measure the original model so differently sized GLBs can be normalized.
+      const arrowBounds = new THREE.Box3().setFromObject(arrowTemplate);
+      const arrowCenter = arrowBounds.getCenter(new THREE.Vector3());
+      const arrowSize = arrowBounds.getSize(new THREE.Vector3());
+
+      // Assumes the model's vertical dimension is local Y.
+      // Increase/decrease this value to adjust the marker size.
+      const ARROW_HEIGHT = 18;
+      const modelHeight = Math.max(arrowSize.y, 0.001);
+      const modelScale = ARROW_HEIGHT / modelHeight;
+
+      for (let i = 0; i < landmarkEntries.length; i++) {
+        const lm = landmarkEntries[i];
+        const groundY = groundHeight(lm.x, lm.z) ?? 0;
+        const baseY = groundY + 18;
+
+        // Animation and positioning wrapper for this landmark.
+        const group = new THREE.Group();
+        group.name = `Landmark Arrow ${i + 1}`;
+
+        // Center and scale the GLB without modifying its source asset.
+        const modelOffset = new THREE.Group();
+        modelOffset.position
+          .copy(arrowCenter)
+          .multiplyScalar(-modelScale);
+        modelOffset.scale.setScalar(modelScale);
+
+        // Each landmark gets its own transform but shares model resources.
+        const model = arrowTemplate.clone(true);
+        modelOffset.add(model);
+        group.add(modelOffset);
+
+        group.position.set(lm.x, baseY, lm.z);
+
+        // Optional: disable shadows for a clean floating-marker appearance.
+        group.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            object.castShadow = false;
+            object.receiveShadow = false;
+          }
+        });
+
+        scene.add(group);
+
+        landmarkArrows.push({
+          group,
+          baseY,
+          phase: Math.random() * Math.PI * 2,
+        });
+      }
+    } catch (error) {
+      // A missing marker asset should not prevent the campus from loading.
+      console.error(
+        '[Landmark arrows] Failed to load /assets/arrowhead.glb:',
+        error
+      );
+    }
 
     // Bicycles wait in racks by the buildings. Any free one can be ridden;
     // the rider is fitted to it by inverse kinematics every frame.
@@ -1076,7 +1153,25 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     };
 
     function animate(now: number) {
-      if (disposed) return; frame = requestAnimationFrame(animate); tick(now);
+      if (disposed) return;
+
+      frame = requestAnimationFrame(animate);
+
+      // ---- Animate GLB landmark pointers ----
+
+      const elapsed = arrowClock.getElapsedTime();
+
+      for (const arrow of landmarkArrows) {
+        // Smooth vertical floating motion.
+        arrow.group.position.y =
+          arrow.baseY + Math.sin(elapsed * 1.4 + arrow.phase) * 1.5;
+
+        // Slow rotation around the vertical world axis.
+        arrow.group.rotation.y = elapsed * 0.7 + arrow.phase * 0.1;
+      }
+
+      // Render after updating the pointers.
+      tick(now);
     }
     function tick(now: number) {
       // Clocks can step backwards (a resumed tab, a debugger); never run time in reverse.
