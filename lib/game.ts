@@ -779,7 +779,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     let syncElapsed = 0;
 
     try {
-      multiplayerRoom = await joinCampus();
+      multiplayerRoom = await joinCampus("Guest", selectedAvatar);
 
       remotePlayers = createRemotePlayers(
         scene,

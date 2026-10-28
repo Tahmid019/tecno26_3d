@@ -23,7 +23,7 @@ export function getRoom() {
   return room;
 }
 
-export async function joinCampus(name = "Guest"): Promise<Room> {
+export async function joinCampus(name = "Guest", avatar = "student.glb"): Promise<Room> {
   if (room) return room;
   if (joining) return joining;
 
@@ -31,7 +31,7 @@ export async function joinCampus(name = "Guest"): Promise<Room> {
     client ??= new Client(SERVER_URL);
 
     try {
-      const joined = await client.joinOrCreate("campus", { name });
+      const joined = await client.joinOrCreate("campus", { name, avatar });
       room = joined;
 
       joined.onLeave(() => {

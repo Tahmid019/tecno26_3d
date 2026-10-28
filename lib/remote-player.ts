@@ -1,5 +1,6 @@
 
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import { Callbacks, type Room } from "@colyseus/sdk";
 import { LOOKS, type Fleet, type Bike } from "./bicycle";
@@ -9,6 +10,7 @@ type PlayerData = {
   qx: number; qy: number; qz: number; qw: number;
   animation: string;
   name: string;
+  avatar: string;
 };
 
 type RemotePlayer = {
@@ -38,6 +40,7 @@ export function createRemotePlayers(
 ): RemotePlayers {
   const players = new Map<string, RemotePlayer>();
   const callbacks = Callbacks.get(room);
+  const loader = new GLTFLoader();
   let disposed = false;
 
   function setAnimation(player: RemotePlayer, name: string) {
@@ -48,49 +51,63 @@ export function createRemotePlayers(
     player.currentAnimation = requested;
   }
 
-  function addPlayer(data: PlayerData, sessionId: string) {
+  async function addPlayer(data: PlayerData, sessionId: string) {
     if (disposed || sessionId === room.sessionId || players.has(sessionId)) return;
 
-    const model = clone(sourceModel);
-    const root = new THREE.Group();
-    root.add(model);
+    const avatar = data.avatar || "student.glb";
 
-    model.traverse((object) => {
-      if (object instanceof THREE.Mesh) {
-        object.castShadow = true;
-        object.frustumCulled = false;
+    try {
+      const gltf = await loader.loadAsync(`/avatar/${avatar}`);
+
+      if (disposed || players.has(sessionId)) return;
+
+      const model = gltf.scene;
+      const root = new THREE.Group();
+      root.add(model);
+
+      model.traverse(object => {
+        if (object instanceof THREE.Mesh) {
+          object.castShadow = true;
+          object.frustumCulled = false;
+        }
+      });
+
+      const mixer = new THREE.AnimationMixer(model);
+      const actions: Record<string, THREE.AnimationAction> = {};
+
+      for (const clip of gltf.animations) {
+        actions[clip.name] = mixer.clipAction(clip);
       }
-    });
 
-    const mixer = new THREE.AnimationMixer(model);
-    const actions: Record<string, THREE.AnimationAction> = {};
-    for (const clip of clips) actions[clip.name] = mixer.clipAction(clip);
+      const bicycle = fleet.add(
+        LOOKS[0],
+        new THREE.Vector3(data.x, data.y, data.z),
+        0,
+      );
+      bicycle.visible = false;
 
-    const bicycle = fleet.add(
-      LOOKS[0],
-      new THREE.Vector3(data.x, data.y, data.z),
-      0,
-    );
-    bicycle.visible = false;
+      const player: RemotePlayer = {
+        root,
+        model,
+        mixer,
+        actions,
+        currentAnimation: "",
+        data,
+        targetPosition: new THREE.Vector3(data.x, data.y, data.z),
+        targetQuaternion: new THREE.Quaternion(data.qx, data.qy, data.qz, data.qw),
+        bicycle,
+        riding: false,
+      };
 
-    const player: RemotePlayer = {
-      root,
-      model,
-      mixer,
-      actions,
-      currentAnimation: "",
-      data,
-      targetPosition: new THREE.Vector3(data.x, data.y, data.z),
-      targetQuaternion: new THREE.Quaternion(data.qx, data.qy, data.qz, data.qw),
-      bicycle,
-      riding: false,
-    };
+      root.position.copy(player.targetPosition);
+      root.quaternion.copy(player.targetQuaternion);
 
-    root.position.copy(player.targetPosition);
-    root.quaternion.copy(player.targetQuaternion);
-    scene.add(root);
-    players.set(sessionId, player);
-    setAnimation(player, data.animation || "Idle");
+      scene.add(root);
+      players.set(sessionId, player);
+      setAnimation(player, data.animation || "Idle");
+    } catch (error) {
+      console.error(`[Multiplayer] Failed to load avatar "${avatar}":`, error);
+    }
   }
 
   function removePlayer(_data: PlayerData, sessionId: string) {
