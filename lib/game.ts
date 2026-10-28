@@ -370,7 +370,10 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       throw new Error(`Failed to load avatar: ${response.status}`);
     }
 
-    const studentBytes = await download.get(`/avatar/${selectedAvatar}`);
+    const [studentBytes, npcSkinBytes] = await Promise.all([
+      download.get(`/avatar/${selectedAvatar}`),
+      download.get('/assets/student.glb')
+    ]);
     state.progress = 'Building the campus'; publish();
     // A timer, not a frame: a phone that is switched away mid-load gets no
     // animation frames at all, and the build would stall until it came back.
@@ -596,8 +599,32 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     };
     const solids = new CollisionWorld(solidGroup); physics.extra.push(solids);
 
+
     const student = await loader.parseAsync(studentBytes, '');
-    const avatar = new THREE.Group(); avatar.add(student.scene); scene.add(avatar);
+    const npcSkinModel = await loader.parseAsync(npcSkinBytes, '');
+    const npcModel = (await loader.parseAsync(npcBytes, '')).scene;
+
+    let npcSkin: THREE.Texture | null = null;
+
+    npcSkinModel.scene.traverse(o => {
+      if (!(o instanceof THREE.Mesh)) return;
+
+      const materials = Array.isArray(o.material) ? o.material : [o.material];
+
+      for (const material of materials) {
+        if (material instanceof THREE.MeshStandardMaterial && material.map) {
+          npcSkin ??= material.map;
+        }
+      }
+    });
+
+    if (!npcSkin) console.warn('No texture found in /assets/student.glb');
+
+    const avatar = new THREE.Group();
+    avatar.add(student.scene);
+    scene.add(avatar);
+
+
     student.scene.traverse(o => { if (o instanceof THREE.Mesh) o.frustumCulled = false; });
     surfaces.apply(student.scene, 'lamps');
     const mixer = new THREE.AnimationMixer(student.scene); const actions = Object.fromEntries(student.animations.map(c => [c.name, mixer.clipAction(c)]));
@@ -768,11 +795,9 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
 
     // Other students: walkers on the road verges, groups outside the buildings
     // and cyclists keeping left, all drawn from a lighter copy of the student.
-    const npcModel = (await loader.parseAsync(npcBytes, '')).scene;
-    let studentSkin: THREE.Texture | null = null;
-    student.scene.traverse(o => { const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (!studentSkin && m?.map) studentSkin = m.map; });
+    
     const crowd = createCrowd({
-      model: npcModel, clips: student.animations, map: studentSkin, fleet, ground: (x, z, from) => groundAt(x, z, from), planted,
+      model: npcModel, clips: student.animations, map: npcSkin, fleet, ground: (x, z, from) => groundAt(x, z, from), planted,
       onBell: (x, z) => { const dx = x - camera.position.x, dz = z - camera.position.z; const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0); audio.bellFrom(Math.hypot(dx, dz), (dx * right.x + dz * right.z) / Math.max(1, Math.hypot(dx, dz))); },
       // Someone shoved or knocked flat: a thud, a jolt, and from a bicycle at
       // a sprint the rider goes down too.
@@ -786,7 +811,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     const crowdModel = (await loader.parseAsync(crowdBytes, '')).scene;
     const crowdIdle = student.animations.find(c => c.name === 'Idle')!;
     const bakeCrowd = () => bakeAudienceGeometry(crowdModel, crowdIdle, planted.Idle ?? 0);
-    const audience = createAudience({ geometry: bakeCrowd(), map: studentSkin, crowd: concert.audience, band: concert.band });
+    const audience = createAudience({ geometry: bakeCrowd(), map: npcSkin, crowd: concert.audience, band: concert.band });
     concert.root.add(audience.mesh, audience.guitars); surfaces.patch(audience.material, 'lamps'); surfaces.patch(audience.guitarPaint, 'lamps');
     concert.root.add(audience.mesh, audience.guitars); surfaces.patch(audience.material, 'lamps'); surfaces.patch(audience.guitarPaint, 'lamps');
     const allRoads: number[][][] = [...roads, LIBRARY_ROAD.map(p => [p[0], p[1]]), ADMIN_ROAD];
@@ -813,7 +838,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
         }
       }
       if (ring.length) {
-        arenaAudience = createAudience({ geometry: bakeCrowd(), map: studentSkin, crowd: ring, band: [] });
+        arenaAudience = createAudience({ geometry: bakeCrowd(), map: npcSkin, crowd: ring, band: [] });
         arenaAudience.mesh.position.set(cx, 0, cz);
         scene.add(arenaAudience.mesh); surfaces.patch(arenaAudience.material, 'lamps');   // lit by the night lamps like the rest
       }

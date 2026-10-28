@@ -8,6 +8,8 @@ import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 
 const avatars = [
   { name: "Student", file: "student.glb" },
+  { name: "Sonic", file: "sonic.glb" },
+  { name: "Among Us", file: "amongus.glb" },
 ];
 
 type AvatarOption = (typeof avatars)[number];

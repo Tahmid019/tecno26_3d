@@ -17,7 +17,7 @@ let joining: Promise<Room> | null = null;
 
 const SERVER_URL =
   process.env.NEXT_PUBLIC_MULTIPLAYER_URL ||
-  "http://192.168.137.95:2567";
+  "http://localhost:2567";
 
 export function getRoom() {
   return room;
