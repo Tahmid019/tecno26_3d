@@ -227,3 +227,91 @@ kbd { font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .
   .hud-telemetry { display: none; }
   .hud-logo { display: none; }
 }
+
+@media (pointer: coarse) and (max-width: 700px) {
+  .start-panel {
+    left: 12px;
+    right: 12px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    max-width: none;
+    max-height: calc(100dvh - 88px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 12px 14px 14px;
+    border-radius: 4px 16px 16px 16px;
+    background: linear-gradient(
+      145deg,
+      rgba(10, 30, 25, 0.96),
+      rgba(18, 48, 37, 0.94)
+    );
+    border: 1px solid #ffffff30;
+    backdrop-filter: blur(12px);
+    scrollbar-width: none;
+  }
+
+  .start-panel::-webkit-scrollbar {
+    display: none;
+  }
+
+  .start-panel h1 {
+    font-size: clamp(1.8rem, 7vw, 2.5rem);
+    line-height: 1.05;
+    letter-spacing: -1.2px;
+    margin: 8px 0 10px;
+  }
+
+  .control-guide {
+    gap: 8px;
+    margin-bottom: 12px;
+    color: #e0eae4;
+    font-size: 12px;
+  }
+
+  .control-guide > span {
+    gap: 5px;
+  }
+
+  .play-button {
+    height: 48px !important;
+    min-height: 48px;
+    justify-content: flex-start !important;
+    padding: 0 14px !important;
+    font-size: 14px !important;
+    border-radius: 8px !important;
+  }
+
+  .loading {
+    gap: 7px;
+  }
+
+  .loading-track {
+    height: 4px;
+  }
+
+  .start-panel .loading small {
+    color: #d2e3d8;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+}
+
+@media (pointer: coarse) and (max-width: 700px) and (max-height: 380px) {
+  .start-panel {
+    max-height: calc(100dvh - 84px);
+    padding: 8px 12px 10px;
+  }
+
+  .start-panel h1 {
+    font-size: 1.65rem;
+    margin: 5px 0 7px;
+  }
+
+  .control-guide {
+    margin-bottom: 8px;
+  }
+
+  .play-button {
+    height: 42px !important;
+    min-height: 42px;
+  }
+}

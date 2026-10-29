@@ -1508,7 +1508,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       concert.setNight(dayState.lamps); sky.group.position.set(camera.position.x, 0, camera.position.z); sky.update(eventTime);
       // The clock: a day hour in a minute, nights three times faster.
       if (state.timeMode === 'auto' && state.ready) {
-        hours = ((Date.now() % 86_400_000) / 86_400_000 * 200 % 1) * 24;
+        hours = ((Date.now() % 86_400_000) / 86_400_000 * 48 % 1) * 24;
       }
 
       daylightAt(hours, dayState);
