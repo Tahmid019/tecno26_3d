@@ -286,7 +286,7 @@ function createStylizedWater(
   return { mesh: waterMesh, material };
 }
 export async function createGame(host: HTMLDivElement, onState: (s: GameState) => void, selectedAvatar = "student.glb"): Promise<Game> {
-  const state: GameState = { ready: false, playing: false, progress: 'Downloading the campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 67, motion: 'Idle', percent: 0, outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false, quality: 'balanced', overview: false, sound: true, time: '16:30', timeMode: 'auto', outOfBounds: false };
+  const state: GameState = { ready: false, playing: false, progress: 'Downloading the campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 67, motion: 'Idle', percent: 0, outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false, quality: 'performance', overview: false, sound: true, time: '16:30', timeMode: 'auto', outOfBounds: false };
   const audio = createAudio();
   const publish = () => onState({ ...state });
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#bdd7df');

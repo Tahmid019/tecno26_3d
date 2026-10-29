@@ -154,8 +154,8 @@ export function createTreeStand(
 
   return {
     group,
-    setLeafy(on: boolean) {
-      group.visible = on;
+    setLeafy(_on: boolean) {
+      group.visible = true;
     },
     update(_time: number) {},
     dispose() {

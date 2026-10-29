@@ -14,6 +14,26 @@ const avatars = [
 
 type AvatarOption = (typeof avatars)[number];
 
+function disposeModel(model: THREE.Object3D) {
+  model.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+
+    object.geometry.dispose();
+
+    const materials = Array.isArray(object.material)
+      ? object.material
+      : [object.material];
+
+    materials.forEach((material) => {
+      for (const value of Object.values(material)) {
+        if (value instanceof THREE.Texture) value.dispose();
+      }
+
+      material.dispose();
+    });
+  });
+}
+
 function AvatarPreview({ file }: { file: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -22,36 +42,48 @@ function AvatarPreview({ file }: { file: string }) {
     if (!container) return;
 
     let active = true;
+    let frame = 0;
     let model: THREE.Object3D | null = null;
+    let renderer: THREE.WebGLRenderer | null = null;
+    let controls: OrbitControls | null = null;
+    let resizeObserver: ResizeObserver | null = null;
 
     const scene = new THREE.Scene();
-
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
     camera.position.set(0, 1.4, 4);
 
-    const renderer = new THREE.WebGLRenderer({
-      alpha: true,
-      antialias: true,
-    });
+    try {
+      renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        antialias: false,
+        powerPreference: "low-power",
+      });
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setClearColor(0x000000, 0);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+      renderer.setClearColor(0x000000, 0);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.setSize(
+        Math.max(container.clientWidth, 1),
+        Math.max(container.clientHeight, 1),
+      );
 
-    container.appendChild(renderer.domElement);
+      container.appendChild(renderer.domElement);
+    } catch (error) {
+      console.error("Avatar preview WebGL initialization failed:", error);
+      return;
+    }
 
     scene.add(new THREE.AmbientLight(0xffffff, 1.8));
 
-    const light = new THREE.DirectionalLight(0xffffff, 2.2);
-    light.position.set(3, 5, 4);
-    scene.add(light);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+    keyLight.position.set(3, 5, 4);
+    scene.add(keyLight);
 
     const fillLight = new THREE.DirectionalLight(0xffffff, 1);
     fillLight.position.set(-3, 2, -2);
     scene.add(fillLight);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
+    controls = new OrbitControls(camera, renderer.domElement);
     controls.enablePan = false;
     controls.enableZoom = false;
     controls.minPolarAngle = Math.PI / 3;
@@ -65,11 +97,7 @@ function AvatarPreview({ file }: { file: string }) {
       `/avatar/${file}`,
       (gltf) => {
         if (!active) {
-          gltf.scene.traverse((object) => {
-            if (object instanceof THREE.Mesh) {
-              object.geometry.dispose();
-            }
-          });
+          disposeModel(gltf.scene);
           return;
         }
 
@@ -77,6 +105,7 @@ function AvatarPreview({ file }: { file: string }) {
 
         const box = new THREE.Box3().setFromObject(model);
         const center = box.getCenter(new THREE.Vector3());
+        const height = box.max.y - box.min.y;
 
         model.position.x -= center.x;
         model.position.z -= center.z;
@@ -84,34 +113,41 @@ function AvatarPreview({ file }: { file: string }) {
 
         scene.add(model);
 
-        const height = box.max.y - box.min.y;
         camera.position.set(0, height * 0.7, Math.max(height * 2.5, 2));
-        controls.target.set(0, height * 0.5, 0);
-        controls.update();
+        camera.near = Math.max(height / 100, 0.01);
+        camera.far = Math.max(height * 20, 100);
+        camera.updateProjectionMatrix();
+
+        controls?.target.set(0, height * 0.5, 0);
+        controls?.update();
       },
       undefined,
       (error) => {
-        console.error(`Failed to load avatar: ${file}`, error);
+        if (active) console.error(`Failed to load avatar: ${file}`, error);
       },
     );
 
-    let frame = 0;
-
     const render = () => {
-      if (!active) return;
+      if (!active || !renderer) return;
+
       frame = requestAnimationFrame(render);
-      controls.update();
+      controls?.update();
       renderer.render(scene, camera);
     };
 
     render();
 
-    const resizeObserver = new ResizeObserver(() => {
-      if (!container.clientWidth || !container.clientHeight) return;
+    resizeObserver = new ResizeObserver(() => {
+      if (!active || !renderer) return;
 
-      camera.aspect = container.clientWidth / container.clientHeight;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      if (!width || !height) return;
+
+      camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setSize(width, height);
     });
 
     resizeObserver.observe(container);
@@ -119,27 +155,19 @@ function AvatarPreview({ file }: { file: string }) {
     return () => {
       active = false;
       cancelAnimationFrame(frame);
-      resizeObserver.disconnect();
-      controls.dispose();
+      resizeObserver?.disconnect();
+      controls?.dispose();
 
       if (model) {
         scene.remove(model);
+        disposeModel(model);
       }
 
-      scene.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
-          object.geometry.dispose();
+      renderer?.renderLists.dispose();
+      renderer?.dispose();
+      renderer?.domElement.remove();
 
-          const materials = Array.isArray(object.material)
-            ? object.material
-            : [object.material];
-
-          materials.forEach((material) => material.dispose());
-        }
-      });
-
-      renderer.dispose();
-      renderer.domElement.remove();
+      scene.clear();
     };
   }, [file]);
 
@@ -163,11 +191,11 @@ export default function AvatarCustomizer({
   }
 
   return (
-    <section className="w-full  overflow-hidden rounded-tl-sm rounded-tr-2xl rounded-br-2xl rounded-bl-2xl border border-white/15 bg-white/10 text-white backdrop-blur-[14px] [clip-path:polygon(20%_0%,80%_0%,100%_0,100%_80%,100%_100%,0_100%,0%_80%,0_34%)] ">
-      <div className="relative lg:h-[350px] md:h-[175px] sm:h-[87px]">
+    <section className="w-full overflow-hidden rounded-tl-sm rounded-tr-2xl rounded-br-2xl rounded-bl-2xl border border-white/15 bg-white/10 text-white backdrop-blur-[14px] [clip-path:polygon(20%_0%,80%_0%,100%_0,100%_80%,100%_100%,0_100%,0%_80%,0_34%)]">
+      <div className="relative h-[175px] sm:h-[220px] md:h-[280px] lg:h-[350px]">
         <AvatarPreview file={avatars[selected].file} />
 
-        <span className="pointer-events-none font-orbitron absolute inset-x-0 bottom-3 text-center text-xs text-white/80">
+        <span className="pointer-events-none absolute inset-x-0 bottom-3 text-center font-orbitron text-xs text-white/80">
           {avatars[selected].name}
         </span>
       </div>
@@ -190,7 +218,7 @@ export default function AvatarCustomizer({
               onClick={() => select(index)}
               aria-label={`Select ${avatar.name}`}
               aria-pressed={selected === index}
-              className={`relative font-orbitron grid size-9 shrink-0 place-items-center rounded-xl border text-xs transition ${
+              className={`relative grid size-9 shrink-0 place-items-center rounded-xl border font-orbitron text-xs transition ${
                 selected === index
                   ? "border-white bg-white/15 text-white"
                   : "border-white/10 bg-white/[0.04] text-white/60 hover:bg-white/10"
