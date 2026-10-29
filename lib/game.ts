@@ -397,7 +397,11 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     scene.add(campus.scene); campus.scene.updateMatrixWorld(true);
     campus.scene.visible = true;
     prepare(campus.scene);
-    const area = await loader.loadAsync('/assets/campus_area.glb');
+
+
+    const area = await loader.loadAsync('/assets/campus_area_resized.glb');
+    
+    
     area.scene.position.set(-513, 0, 231);
     area.scene.traverse(o => { if (o instanceof THREE.Mesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(area.scene); area.scene.updateMatrixWorld(true); prepare(area.scene);
@@ -1503,7 +1507,10 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       if (arenaAudience && robowarFootprint) arenaAudience.update(eventTime, Math.hypot(camera.position.x - robowarFootprint.cx, camera.position.z - robowarFootprint.cz), 220);
       concert.setNight(dayState.lamps); sky.group.position.set(camera.position.x, 0, camera.position.z); sky.update(eventTime);
       // The clock: a day hour in a minute, nights three times faster.
-      if (state.timeMode === 'auto' && state.ready) hours = (hours + elapsed * hoursPerSecond(hours)) % 24;
+      if (state.timeMode === 'auto' && state.ready) {
+        hours = ((Date.now() % 86_400_000) / 86_400_000 * 1_000 % 1) * 24;
+      }
+
       daylightAt(hours, dayState);
       sun.color.copy(dayState.lightColor); sun.intensity = dayState.lightIntensity * 1.12;
       water.material.uniforms.uSunColor.value.copy(dayState.lightColor);
