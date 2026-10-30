@@ -1578,7 +1578,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       if (arenaAudience && robowarFootprint) arenaAudience.update(eventTime, Math.hypot(camera.position.x - robowarFootprint.cx, camera.position.z - robowarFootprint.cz), 220);
       concert.setNight(dayState.lamps); sky.group.position.set(camera.position.x, 0, camera.position.z); sky.update(eventTime);
       // The clock: a day hour in a minute, nights three times faster.
-      const CYCLE_DURATION = 86_400_000; 
+      const CYCLE_DURATION = 2_000_000; 
       
       if (state.timeMode === 'auto' && state.ready) {
         hours = (Date.now() % CYCLE_DURATION) / CYCLE_DURATION * 24
