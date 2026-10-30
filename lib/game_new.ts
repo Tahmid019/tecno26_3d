@@ -95,6 +95,14 @@ const ARENA_LAMP_RED = '#ff1530', ARENA_LAMP_BLUE = '#2060ff';
 const ARENA_LAMP_PEAK = 400;     // spotlight intensity at full brightness – tune this
 const ARENA_FLASH_PERIOD = 1.2;  // seconds for one red→blue→red cycle
 
+// ---- Mobile performance tuning (desktop behaviour is unchanged) ----
+/** On phones the sky's environment map is refreshed only when the clock has moved this many hours (0 = every frame). */
+const MOBILE_ENV_REFRESH_HOURS = .05;
+/** On phones, while paused / in the menu / in overview, render at most this often (ms). */
+const MOBILE_IDLE_FRAME_MS = 50;
+/** Adaptive resolution on phones (not used at High quality): drop below LOW fps, recover above HIGH fps. */
+const ADAPTIVE_LOW_FPS = 38, ADAPTIVE_HIGH_FPS = 55, ADAPTIVE_MIN_SCALE = .7, ADAPTIVE_MIN_RATIO = .6;
+
 function createStylizedWater(
   scene: THREE.Scene,
   terrain: THREE.Object3D,
@@ -231,8 +239,13 @@ function createStylizedWater(
         float ripples = fract(rippleBase + rippleNoise * 0.4);
         ripples = smoothstep(0.72, 0.96, ripples) * uRipplesRatio;
 
-        // Splashes node: Voronoi raindrop/splash rings
-        float splashRings = splashes(vWorldPosition.xz * 0.18) * uSplashesRatio;
+        // Splashes node: Voronoi raindrop/splash rings. The 3x3 cell loop is
+        // the most expensive part of this shader; a uniform branch skips it
+        // entirely when the ratio is zero (lower qualities on phones).
+        float splashRings = 0.0;
+        if (uSplashesRatio > 0.001) {
+          splashRings = splashes(vWorldPosition.xz * 0.18) * uSplashesRatio;
+        }
 
         // Wave surface dynamics
         float w1 = sin(p.x * 4.2 + p.y * 2.1 + time * 1.2 + n1 * 2.0);
@@ -285,6 +298,14 @@ function createStylizedWater(
 
   return { mesh: waterMesh, material };
 }
+
+/** Bakes the world matrices of a scenery tree that never moves, so three.js
+ * stops recomposing thousands of local matrices every frame. */
+function freezeStatic(root: THREE.Object3D) {
+  root.updateMatrixWorld(true);
+  root.traverse(o => { o.matrixAutoUpdate = false; });
+}
+
 export async function createGame(host: HTMLDivElement, onState: (s: GameState) => void, selectedAvatar = "student.glb"): Promise<Game> {
   const state: GameState = { ready: false, playing: false, progress: 'Downloading the campus', error: '', fps: 0, location: 'Sports complex', x: -20, z: 67, motion: 'Idle', percent: 0, outerPercent: 0, outerReady: false, runLock: false, riding: false, canMount: false, quality: 'performance', overview: false, sound: true, time: '16:30', timeMode: 'auto', outOfBounds: false };
   const audio = createAudio();
@@ -295,8 +316,12 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
   const underwaterColor = new THREE.Color('#08222d');
   scene.fog = campusFog;
   const mobile = matchMedia('(pointer:coarse)').matches;
-  const renderer = new THREE.WebGLRenderer({ antialias: !mobile, powerPreference: 'high-performance', alpha: false });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, mobile ? 1.4 : 1.25)); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
+  // No stencil buffer: nothing draws with it, and it costs bandwidth on mobile GPUs.
+  const renderer = new THREE.WebGLRenderer({ antialias: !mobile, powerPreference: 'high-performance', alpha: false, stencil: false });
+  // The quality setting picks a base pixel ratio; on phones an adaptive scale
+  // trims it a little when the frame rate sags. On desktop the scale stays 1.
+  let basePixelRatio = Math.min(devicePixelRatio, mobile ? 1.4 : 1.25), dynamicScale = 1;
+  renderer.setPixelRatio(basePixelRatio); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
   const canvas = renderer.domElement; host.appendChild(canvas); canvas.tabIndex = 0; canvas.setAttribute('aria-label', 'Campus: click or drag to look, on-screen pad to move');
   const camera = new THREE.PerspectiveCamera(58, 1, .08, 4000);
   camera.position.set(115, 145, -50); camera.lookAt(-75, 0, 120);
@@ -339,6 +364,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
   let hours = 16.5;
   const dayState = daylightAt(hours);
   const size = () => { renderer.setSize(host.clientWidth, host.clientHeight); camera.aspect = host.clientWidth / host.clientHeight; camera.updateProjectionMatrix(); };
+  const applyPixelRatio = () => { renderer.setPixelRatio(basePixelRatio * dynamicScale); size(); };
   const observer = new ResizeObserver(size); observer.observe(host); size();
   const keys = new Set<string>(); let disposed = false, frame = 0; const disposeDaylight = () => { skyLight.dispose(); surfaces.dispose(); };
   const cleanupResources = () => { observer.disconnect(); scene.traverse(o => { if (o instanceof THREE.Mesh) { o.geometry.dispose(); for (const m of Array.isArray(o.material) ? o.material : [o.material]) { for (const value of Object.values(m)) if (value instanceof THREE.Texture) value.dispose(); m.dispose(); } } }); disposeDaylight(); renderer.dispose(); renderer.domElement.remove(); };
@@ -352,28 +378,44 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       }
     });
 
-    const comingSoon = await createComingSoon(
+    // Every file is requested up front so the network stays busy in parallel,
+    // instead of each one waiting for the previous one to download and parse.
+    // Parsing still happens one at a time, in the original order, which keeps
+    // peak memory on phones where it was. A failure surfaces exactly where the
+    // original code awaited it; .catch here only silences "unhandled" warnings.
+    const early = <T,>(p: Promise<T>) => { p.catch(() => { }); return p; };
+    const fetchBytes = (url: string, label = url) => fetch(url).then(r => { if (!r.ok) throw new Error(`${label} ${r.status}`); return r.arrayBuffer(); });
+    const fetchJson = (url: string, label = url) => fetch(url).then(r => { if (!r.ok) throw new Error(`${label} ${r.status}`); return r.json(); });
+    const avatarBytesP = early(fetch(`/avatar/${selectedAvatar}`).then(r => { if (!r.ok) throw new Error(`Failed to load avatar: ${r.status}`); return r.arrayBuffer(); }));
+    const areaBytesP = early(fetchBytes('/assets/campus_area_resized.glb'));
+    const areaColBytesP = early(fetchBytes('/assets/campus_coll.glb'));
+    const outlineP = early(fetchJson('/assets/campus_outline.json', 'campus_outline.json'));
+    const gateBytesP = early(fetchBytes('/assets/tecnogate_emit.glb', 'tecnogate_emit.glb'));
+    const gatePlacementP = early(fetchJson('/assets/ending_gate.json', 'ending_gate.json'));
+    const roboBytesP = early(fetchBytes('/assets/robots3.glb'));
+    const arrowBytesP = early(fetchBytes('/assets/arrowhead.glb'));
+
+    const comingSoonP = early(createComingSoon(
       loader,
       '/assets/comming_soon.glb',
       '/assets/comming_soon.json'
-    );
-
-    scene.add(comingSoon.group);
+    ));
 
     // Everything needed to stand on the ground and walk comes first; the
     // library follows in the background while the campus is already playable.
     const [campusBytes, collisionBytes, treeBytes, npcBytes, crowdBytes] =
       await Promise.all(STAGES.campus.map(url => download.get(url)));
-    const response = await fetch(`/avatar/${selectedAvatar}`);
 
-    if (!response.ok) {
-      throw new Error(`Failed to load avatar: ${response.status}`);
-    }
-
+    // The avatar used to be fetched twice (once to check it, once to use it);
+    // the checked download is now the one that is used.
     const [studentBytes, npcSkinBytes] = await Promise.all([
-      download.get(`/avatar/${selectedAvatar}`),
+      avatarBytesP,
       download.get('/assets/student.glb')
     ]);
+
+    const comingSoon = await comingSoonP;
+    scene.add(comingSoon.group);
+
     state.progress = 'Building the campus'; publish();
     // A timer, not a frame: a phone that is switched away mid-load gets no
     // animation frames at all, and the build would stall until it came back.
@@ -399,22 +441,22 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     prepare(campus.scene);
 
 
-    const area = await loader.loadAsync('/assets/campus_area_resized.glb');
-    
-    
+    const area = await loader.parseAsync(await areaBytesP, '/assets/');
+
+
     area.scene.position.set(-513, 0, 231);
     area.scene.traverse(o => { if (o instanceof THREE.Mesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(area.scene); area.scene.updateMatrixWorld(true); prepare(area.scene);
     const concert = createConcert(); scene.add(concert.root); state.crowdCount = concert.crowdCount;
     concert.root.updateMatrixWorld(true); concert.root.traverse(o => { if (o instanceof THREE.Mesh && !(o instanceof THREE.InstancedMesh) && !(o.material as THREE.Material).transparent) { computeBoundsTree.call(o.geometry); o.raycast = acceleratedRaycast; solidForCamera(o); } });
 
-    const areaCol = await loader.loadAsync('/assets/campus_coll.glb');
+    const areaCol = await loader.parseAsync(await areaColBytesP, '/assets/');
     areaCol.scene.position.set(-513, 0, 231);
     let outlineLoops: number[][][] | undefined;
     let edgeOf: (x: number, z: number) => number = (x, z) =>
       Math.min(x - CAMPUS_BOUNDS.minX, CAMPUS_BOUNDS.maxX - x, z - CAMPUS_BOUNDS.minZ, CAMPUS_BOUNDS.maxZ - z);
     try {
-      const file = await fetch('/assets/campus_outline.json').then(r => { if (!r.ok) throw new Error(`campus_outline.json ${r.status}`); return r.json(); });
+      const file = await outlineP;
       outlineLoops = file.loops;
       // The outline was drawn around campus_area.glb, so it moves with that GLB.
       const boundary = createBoundary(file.loops, area.scene.position.x, area.scene.position.z);
@@ -459,10 +501,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     type Placement = { position: [number, number, number]; rotation?: number | [number, number, number]; scale?: number | [number, number, number] };
     const gateGroup = new THREE.Group(); gateGroup.name = 'Ending gate';
     try {
-      const [glbBytes, placementFile] = await Promise.all([
-        fetch('/assets/tecnogate_emit.glb').then(r => { if (!r.ok) throw new Error(`tecnogate_emit.glb ${r.status}`); return r.arrayBuffer(); }),
-        fetch('/assets/ending_gate.json').then(r => { if (!r.ok) throw new Error(`ending_gate.json ${r.status}`); return r.json(); }),
-      ]);
+      const [glbBytes, placementFile] = await Promise.all([gateBytesP, gatePlacementP]);
       const gateGltf = await loader.parseAsync(glbBytes, '');
       for (const p of (placementFile.objects ?? []) as Placement[]) {
         const copy = gateGltf.scene.clone(true);
@@ -494,7 +533,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     const robowarGroup = new THREE.Group(); robowarGroup.name = 'Robowar Arena';
     let robowarSound: THREE.PositionalAudio | null = null;
     try {
-      const roboGltf = await loader.loadAsync('/assets/robots3.glb');
+      const roboGltf = await loader.parseAsync(await roboBytesP, '/assets/');
       const roboScene = roboGltf.scene;
       roboScene.position.set(-449, 0, 246);
       roboScene.scale.setScalar(1.1);
@@ -589,8 +628,16 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     } catch (e) { console.error('[Robowar Arena] failed to load:', e); }
 
     let lampClock = 0;
+    // On phones the four arena spotlights are switched out of the scene by
+    // day. A light at intensity 0 is still evaluated by every lit pixel of
+    // every material, which on a mobile GPU is a real cost all day long.
+    let arenaLampsLit: boolean | null = null;
     const updateRobowarLamps = (dt: number, night: number) => {
       lampClock += dt;
+      if (mobile) {
+        const lit = night >= .01;
+        if (lit !== arenaLampsLit) { arenaLampsLit = lit; for (const l of robowarLamps) l.spot.visible = lit; }
+      }
       // Smooth square wave: 1 = red pair lit, 0 = blue pair lit
       const a = THREE.MathUtils.smoothstep(Math.sin(lampClock * Math.PI * 2 / ARENA_FLASH_PERIOD), -.25, .25);
       const level = [a, 1 - a];
@@ -700,7 +747,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
 
     try {
       // Load the arrow model once and reuse its geometry/materials.
-      const arrowGltf = await loader.loadAsync('/assets/arrowhead.glb');
+      const arrowGltf = await loader.parseAsync(await arrowBytesP, '/assets/');
       const arrowTemplate = arrowGltf.scene;
 
       arrowTemplate.updateMatrixWorld(true);
@@ -719,7 +766,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       for (let i = 0; i < landmarkEntries.length; i++) {
         const lm = landmarkEntries[i];
         const groundY = groundHeight(lm.x, lm.z) ?? 0;
-        const baseY = groundY + 18;
+        const baseY = groundY + 36;
 
         // Animation and positioning wrapper for this landmark.
         const group = new THREE.Group();
@@ -766,7 +813,9 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     // Bicycles wait in racks by the buildings. Any free one can be ridden;
     // the rider is fitted to it by inverse kinematics every frame.
     const fleet = createFleet(48); scene.add(fleet.group); surfaces.apply(fleet.group, 'lamps');
-    const groundAt = (x: number, z: number, from = 12) => { const hit = world.rayIntersect(new THREE.Ray(new THREE.Vector3(x, from, z), new THREE.Vector3(0, -1, 0))); return hit ? hit.position.y : 0; };
+    // One reusable ray: groundAt runs every frame while riding.
+    const groundRay = new THREE.Ray(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+    const groundAt = (x: number, z: number, from = 12) => { groundRay.origin.set(x, from, z); groundRay.direction.set(0, -1, 0); const hit = world.rayIntersect(groundRay); return hit ? hit.position.y : 0; };
     const rack = (x: number, z: number, heading: number, count: number, first = 0, spacing = .8) => {
       const across = new THREE.Vector3(Math.cos(heading), 0, -Math.sin(heading));
       for (let i = 0; i < count; i++) {
@@ -799,7 +848,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
 
     // Other students: walkers on the road verges, groups outside the buildings
     // and cyclists keeping left, all drawn from a lighter copy of the student.
-    
+
     const crowd = createCrowd({
       model: npcModel, clips: student.animations, map: npcSkin, fleet, ground: (x, z, from) => groundAt(x, z, from), planted,
       onBell: (x, z) => { const dx = x - camera.position.x, dz = z - camera.position.z; const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0); audio.bellFrom(Math.hypot(dx, dz), (dx * right.x + dz * right.z) / Math.max(1, Math.hypot(dx, dz))); },
@@ -810,13 +859,10 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     scene.add(crowd.group); for (const m of crowd.materials) surfaces.patch(m, 'lamps');
     // The TECNOESIS audience and band: the student posed and baked a dozen
     // ways, one instanced draw for everyone, moving with the music.
-    // The TECNOESIS audience and band: the student posed and baked a dozen
-    // ways, one instanced draw for everyone, moving with the music.
     const crowdModel = (await loader.parseAsync(crowdBytes, '')).scene;
     const crowdIdle = student.animations.find(c => c.name === 'Idle')!;
     const bakeCrowd = () => bakeAudienceGeometry(crowdModel, crowdIdle, planted.Idle ?? 0);
     const audience = createAudience({ geometry: bakeCrowd(), map: npcSkin, crowd: concert.audience, band: concert.band });
-    concert.root.add(audience.mesh, audience.guitars); surfaces.patch(audience.material, 'lamps'); surfaces.patch(audience.guitarPaint, 'lamps');
     concert.root.add(audience.mesh, audience.guitars); surfaces.patch(audience.material, 'lamps'); surfaces.patch(audience.guitarPaint, 'lamps');
     const allRoads: number[][][] = [...roads, LIBRARY_ROAD.map(p => [p[0], p[1]]), ADMIN_ROAD];
     crowd.addRoutes(roads, roads);
@@ -894,6 +940,9 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     }
     streetLights.plant(roads, 5.3);
     streetLights.addLights(concert.washes.map(p => concert.root.localToWorld(p.clone())));
+    // The scenery is in place and never moves again: stop three.js from
+    // recomposing its matrices every frame. (Done after adopt() on purpose.)
+    freezeStatic(campus.scene); freezeStatic(area.scene); freezeStatic(gateGroup);
     // Lamp posts and parked bicycles are solid to walk and ride into.
     let lampPosts: Post[] = streetLights.poles().map(b => ({ x: b.x, y: b.y, z: b.z, r: .14 }));
     const bikePosts: Post[] = [];
@@ -927,6 +976,8 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     const tumble = new THREE.Quaternion(), tumbleAxis = new THREE.Vector3(), hipsPivot = new THREE.Vector3(0, .95, 0), pivotTurned = new THREE.Vector3();
     const squashFeet = [new THREE.Vector3(), new THREE.Vector3()], squashTurn = [new THREE.Quaternion(), new THREE.Quaternion()], squashNow = new THREE.Quaternion();
     const bodyForward = new THREE.Vector3(), bodyLeft = new THREE.Vector3(), hipsAt = new THREE.Vector3(), kneePole = new THREE.Vector3(), upright = new THREE.Vector3(0, 1, 0);
+    // Scratch objects reused every frame instead of allocated (less GC jank on phones).
+    const facing = new THREE.Quaternion(), floorRay = new THREE.Ray(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
     const rideState: RideState = { standing: 0, footDown: 0, turn: 0, ground: 0, mount: 1 };
     const bind = new Map<THREE.Object3D, THREE.Quaternion>();
     for (const name of Object.keys(AIR_POSE)) {
@@ -949,6 +1000,8 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
     const EDGE_MARGIN = 30, BOUNDARY_HOLD = 1.5;
     let boundaryHold = -1; // -1 = not out of bounds, otherwise seconds since crossing
     let prev = performance.now(), acc = 0, frames = 0, lastJump = false, eventTime = 0;
+    // Mobile-only bookkeeping: idle frame cap, adaptive resolution, environment refresh.
+    let lastRendered = 0, scaleStart = 0, scaleFrames = 0, envHours = Number.NaN, envLamps: unknown = undefined;
     let shadowPrimed = false, shadowAge = 0, castingLive: boolean | null = null; const shadowCentre = new THREE.Vector3(), shadowAhead = new THREE.Vector3(), shadowAim = new THREE.Vector3();
     const camRay = new THREE.Raycaster(); camRay.firstHitOnly = true;
     const rig = new FollowCamera((origin, ray, far) => { camRay.set(origin, ray); camRay.far = far; const hit = camRay.intersectObjects(cameraObstacles, false)[0]; return hit ? hit.distance : null; });
@@ -1004,7 +1057,16 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       Object.assign(sun.shadow.camera, { left: -span, right: span, top: span, bottom: -span }); sun.shadow.camera.updateProjectionMatrix();
       setLightDirection(sunward.clone()); shadowPrimed = false;
     };
-    const setQuality = (q: Quality) => { if (!['performance', 'balanced', 'high'].includes(q)) throw new Error('Unknown quality'); state.quality = q; configureShadows(q); surfaces.setLite(q === 'performance' || (mobile && q !== 'high')); grass.setQuality(q); sky.setQuality(q); crowd.setQuality(q); for (const s of stands) { s.setLeafy(leafyAt(q)); surfaces.apply(s.group); } renderer.setPixelRatio(q === 'performance' ? .75 : Math.min(devicePixelRatio, q === 'high' ? 2 : mobile ? 1.4 : 1.25)); size(); publish(); };
+    const setQuality = (q: Quality) => {
+      if (!['performance', 'balanced', 'high'].includes(q)) throw new Error('Unknown quality');
+      state.quality = q; configureShadows(q); surfaces.setLite(q === 'performance' || (mobile && q !== 'high')); grass.setQuality(q); sky.setQuality(q); crowd.setQuality(q);
+      for (const s of stands) { s.setLeafy(leafyAt(q)); surfaces.apply(s.group); }
+      // Phones skip the water's splash rings below High; desktop keeps them always.
+      water.material.uniforms.uSplashesRatio.value = mobile && q !== 'high' ? 0 : .6;
+      basePixelRatio = q === 'performance' ? .75 : Math.min(devicePixelRatio, q === 'high' ? 2 : mobile ? 1.4 : 1.25);
+      if (q === 'high') dynamicScale = 1;
+      applyPixelRatio(); publish();
+    };
     const input = (key: string, pressed: boolean) => {
       if (!state.playing) return; if (pressed) keys.add(key); else keys.delete(key);
       // Reversing releases the sprint lock, the way it does on a game pad.
@@ -1119,7 +1181,8 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       if (document.pointerLockElement === canvas) return;
       const last = touches.get(e.pointerId); if (!last || !state.playing) return;
       const dx = e.clientX - last.x, dy = e.clientY - last.y;
-      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      // Mutate the stored point instead of allocating a new one per move event.
+      last.x = e.clientX; last.y = e.clientY;
       if (touches.size > 1) {
         const [a, b] = [...touches.values()]; const spread = Math.hypot(a.x - b.x, a.y - b.y);
         if (pinch) distance = THREE.MathUtils.clamp(distance - (spread - pinch) * .02, 2.5, 14);
@@ -1183,6 +1246,8 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       streetLights.adopt(fixtures, { above: 8, vertices: [90, 100], glow: false });
       streetLights.plant([LIBRARY_ROAD.map(p => [p[0], p[1]])], 5.8);
       streetLights.plant([ADMIN_ROAD], 6.6);
+      // The outlying buildings are static too, once their lamps are adopted.
+      for (const outer of [library.scene, gallery.scene, admin.scene, adminLink.scene]) freezeStatic(outer);
       lampPosts = streetLights.poles().map(b => ({ x: b.x, y: b.y, z: b.z, r: .14 }));
       grassProbe = createGrassProbe(cameraMeshes.filter(o => grassHeight((o.material as THREE.Material).name || '') > 0), groundHeight);
       state.outerReady = true; state.outerPercent = 100; publish();
@@ -1192,6 +1257,11 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       if (disposed) return;
 
       frame = requestAnimationFrame(animate);
+
+      // On phones, a paused game (menu, overview) is drawn at a lower rate:
+      // nothing is being steered, and it saves battery and heat for play.
+      if (mobile && !state.playing && now - lastRendered < MOBILE_IDLE_FRAME_MS) return;
+      lastRendered = now;
 
       // ---- Animate GLB landmark pointers ----
 
@@ -1293,6 +1363,8 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       const accel = state.riding ? 30 : transition ? 14 : running ? 10 : 15;
       let knock = 0; physics.impact = 0;
       if (state.playing || !hasStarted) {
+        // Built once per frame, not once per physics sub-step.
+        const postLists = [[lampPosts, apart3], [bikePosts, apart4]] as const;
         const blend = stepper.advance(elapsed, step => {
           lastFeet.copy(nextFeet);
           physics.step(step, state.playing ? direction : zero, speed, accel);
@@ -1305,7 +1377,7 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
             const fx = feet.x + (along ? Math.sin(myBike!.heading) * along : 0), fz = feet.z + (along ? Math.cos(myBike!.heading) * along : 0), r = along ? .24 : body;
             const people = crowd.separate(probePoint.set(fx, feet.y, fz), r, apart2, { x: physics.velocity.x, z: physics.velocity.z, riding: state.riding });
             if (people.lengthSq() > 0) { physics.capsule.translate(people); knocked = true; }
-            for (const [list, out] of [[lampPosts, apart3], [bikePosts, apart4]] as const) {
+            for (const [list, out] of postLists) {
               const push = pushOut(fx, feet.y - .3, fz, r, list, out);
               if (push.lengthSq() > 0) {
                 // How hard it was hit: the speed straight into the post.
@@ -1363,11 +1435,10 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
         if (!drag && document.pointerLockElement !== canvas) yaw += Math.atan2(Math.sin(rideHeading - yaw), Math.cos(rideHeading - yaw)) * (1 - Math.exp(-elapsed * 2.4));
       } else if (transition && transition.kind !== 'approach') {
         // Square to the bicycle while getting on or off.
-        avatar.quaternion.slerp(new THREE.Quaternion().setFromAxisAngle(upright, transition.bike.heading), 1 - Math.exp(-elapsed * 12));
+        avatar.quaternion.slerp(facing.setFromAxisAngle(upright, transition.bike.heading), 1 - Math.exp(-elapsed * 12));
       } else if (moving) {
         const wanted = Math.atan2(direction.x, direction.z);
-        const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), wanted);
-        avatar.quaternion.slerp(q, 1 - Math.exp(-elapsed * 15));
+        avatar.quaternion.slerp(facing.setFromAxisAngle(upright, wanted), 1 - Math.exp(-elapsed * 15));
       }
       // On a bicycle the idle clip only breathes under the riding pose.
       const motion = state.riding ? 'Idle' : moving ? (running ? 'Run' : 'Walk') : 'Idle';
@@ -1507,8 +1578,10 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       if (arenaAudience && robowarFootprint) arenaAudience.update(eventTime, Math.hypot(camera.position.x - robowarFootprint.cx, camera.position.z - robowarFootprint.cz), 220);
       concert.setNight(dayState.lamps); sky.group.position.set(camera.position.x, 0, camera.position.z); sky.update(eventTime);
       // The clock: a day hour in a minute, nights three times faster.
+      const CYCLE_DURATION = 2_000_000; 
+      
       if (state.timeMode === 'auto' && state.ready) {
-        hours = ((Date.now() % 86_400_000) / 86_400_000 * 48 % 1) * 24;
+        hours = (Date.now() % CYCLE_DURATION) / CYCLE_DURATION * 24
       }
 
       daylightAt(hours, dayState);
@@ -1530,11 +1603,17 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       }
       renderer.toneMappingExposure = dayState.exposure;
       sky.setPalette(dayState);
-      scene.environment = skyLight.update(dayState); scene.environmentIntensity = .72;
+      // The environment map follows the sky. On phones it is refreshed only
+      // when the clock has visibly moved (or the lamps switch), not every frame.
+      if (!mobile || !(Math.abs(hours - envHours) < MOBILE_ENV_REFRESH_HOURS) || dayState.lamps !== envLamps) {
+        scene.environment = skyLight.update(dayState); envHours = hours; envLamps = dayState.lamps;
+      }
+      scene.environmentIntensity = .72;
       surfaces.setNight(dayState.lamps); streetLights.update(elapsed, dayState.lamps, camera.position, surfaces.uniforms.uLamps.value);
       updateRobowarLamps(elapsed, Number(dayState.lamps));
       if (state.playing) follow(elapsed);
-      const floor = world.rayIntersect(new THREE.Ray(avatar.position.clone().add(new THREE.Vector3(0, .3, 0)), new THREE.Vector3(0, -1, 0)));
+      floorRay.origin.copy(avatar.position); floorRay.origin.y += .3; floorRay.direction.set(0, -1, 0);
+      const floor = world.rayIntersect(floorRay);
       // The student's contact shadow, stretched under the bicycle when riding.
       // It moves every frame, where a shadow from the sun's map would lag and jump.
       shadow.position.set(avatar.position.x, floor ? floor.position.y + .025 : avatar.position.y + .015, avatar.position.z); shadow.visible = avatar.visible;
@@ -1580,6 +1659,22 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
       // Adding the water update incrementor here
       water.material.uniforms.uTime.value += elapsed;
       renderer.render(scene, camera); acc += elapsed; frames++;
+
+      // Adaptive resolution (phones only, never at High): measured on the real
+      // clock over two seconds, it steps the pixel ratio down when the frame
+      // rate sags and back up when there is headroom.
+      if (mobile && state.playing && state.quality !== 'high') {
+        if (!scaleStart) scaleStart = now;
+        scaleFrames++;
+        const span = (now - scaleStart) / 1000;
+        if (span > 2) {
+          const fps = scaleFrames / span, floorScale = Math.max(ADAPTIVE_MIN_SCALE, ADAPTIVE_MIN_RATIO / basePixelRatio);
+          const next = fps < ADAPTIVE_LOW_FPS ? Math.max(floorScale, dynamicScale - .1) : fps > ADAPTIVE_HIGH_FPS ? Math.min(1, dynamicScale + .05) : dynamicScale;
+          scaleStart = now; scaleFrames = 0;
+          if (Math.abs(next - dynamicScale) > .001) { dynamicScale = next; applyPixelRatio(); }
+        }
+      } else { scaleStart = 0; scaleFrames = 0; }
+
       // =================
       remotePlayers?.update(elapsed);
 
@@ -1611,6 +1706,11 @@ export async function createGame(host: HTMLDivElement, onState: (s: GameState) =
         publish(); acc = 0; frames = 0;
       }
     }
+    // Phones start with the settings the quality label already promises
+    // ('performance' by default): smaller shadow map, lighter grass, sky and
+    // crowd, no splash rings. Before, they ran at the heavier default until
+    // the player changed quality by hand. Desktop start-up is unchanged.
+    if (mobile) setQuality(state.quality ?? 'performance');
     state.x = avatar.position.x;
     state.y = avatar.position.y;
     state.z = avatar.position.z;
