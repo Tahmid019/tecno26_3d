@@ -28,6 +28,7 @@ export default function MultiplayerChat({ room }: { room: Room }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
   const chatRef = useRef<HTMLElement>(null);
 
@@ -45,9 +46,12 @@ export default function MultiplayerChat({ room }: { room: Room }) {
   useEffect(() => {
     const remove = room.onMessage("chat", (data: ChatMessage) => {
       setMessages((prev) => [...prev, data].slice(-100));
+      if (!open) {
+        setHasUnread(true);
+      }
     });
     return () => remove();
-  }, [room]);
+  }, [room, open]);
 
   useEffect(() => {
     if (open) bottom.current?.scrollIntoView({ behavior: "smooth" });
@@ -64,14 +68,25 @@ export default function MultiplayerChat({ room }: { room: Room }) {
   return (
     <>
       <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Toggle chat"
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+          } else {
+            setOpen(true);
+            setHasUnread(false);
+          }
+        }}
+        aria-label={hasUnread ? "Open chat, unread messages" : "Toggle chat"}
         className={`fixed bottom-24 right-4 z-[60] flex h-11 w-11 items-center justify-center rounded-full border  bg-[#24272c]/10 text-white shadow-lg backdrop-blur-md transition hover:bg-[#34383e]/50 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2 ${
           open ? "pointer-events-none translate-x-5 opacity-0" : ""
         }`}
       >
         <MessageCircle size={20} />
         
+        {hasUnread && !open && (
+          <span className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full bg-white ring-2 ring-white" />
+        )}
+
       </button>
 
       <section
