@@ -41,18 +41,27 @@ function glowMaterial() {
   return new THREE.ShaderMaterial({
     name: 'Street lights | glow', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     uniforms: { uLevel: { value: 0 }, uColor: { value: new THREE.Color('#ffc98e') } },
-    vertexShader: /* glsl */`
-      varying vec2 vUv; varying float vFade;
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      varying float vFade;
+
       void main() {
         vUv = uv;
-        vec4 centre = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-        // Seen from far off a glow shrinks less than the lamp, as a bright
-        // point does through a little haze, then fades into it.
-        float distance = -centre.z;
-        centre.xy += position.xy * (2.4 + distance * .012);
-        vFade = 1.0 - smoothstep(180.0, 420.0, distance);
+
+        vec4 centre =
+          modelViewMatrix *
+          instanceMatrix *
+          vec4(0.0, 0.0, 0.0, 1.0);
+
+        float viewDistance = -centre.z;
+
+        centre.xy += position.xy * (2.4 + viewDistance * 0.012);
+
+        vFade = 1.0 - smoothstep(180.0, 420.0, viewDistance);
+
         gl_Position = projectionMatrix * centre;
-      }`,
+      }
+    `,
     fragmentShader: /* glsl */`
       uniform float uLevel; uniform vec3 uColor;
       varying vec2 vUv; varying float vFade;
